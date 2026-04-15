@@ -3,57 +3,43 @@
 @tailwind utilities;
 
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --bg: #f3f8ff;
+  --bg-soft: #eef5ff;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-strong: #ffffff;
+  --line: #d7e4f5;
+  --line-strong: #b9d0ea;
+  --text: #12233f;
+  --text-soft: #57708f;
+  --text-faint: #7d92ad;
+  --blue-1: #dff1ff;
+  --blue-2: #b7ddff;
+  --blue-3: #6eb6ff;
+  --blue-4: #2b6cb0;
+  --blue-5: #183b70;
+  --gold-1: #fff3cb;
+  --gold-2: #f4cf73;
+  --gold-3: #d3a63d;
+  --green: #18a16d;
+  --red: #cf4b5a;
+  --orange: #da8b2f;
+  --shadow-lg: 0 18px 44px rgba(24, 59, 112, 0.1);
+  --shadow-md: 0 10px 24px rgba(39, 76, 126, 0.08);
+  --radius-xl: 20px;
+  --radius-lg: 14px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --font-display: "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "PingFang SC", "Microsoft YaHei", sans-serif;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  color-scheme: light dark;
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-#root {
-  width: 100vw;
-  max-width: 100%;
-  margin: 0;
-  text-align: left;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+* {
   box-sizing: border-box;
 }
 
@@ -62,49 +48,104 @@ html, body {
   padding: 0;
   width: 100%;
   max-width: 100%;
+  min-height: 100%;
+  font-family: var(--font-body);
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(244, 207, 115, 0.25), transparent 28%),
+    radial-gradient(circle at top right, rgba(110, 182, 255, 0.22), transparent 24%),
+    linear-gradient(180deg, #f9fcff 0%, #f3f8ff 38%, #edf4fb 100%);
   overflow-x: hidden;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.3;
+  background-image:
+    linear-gradient(rgba(43, 108, 176, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(43, 108, 176, 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg, rgba(0,0,0,0.6), transparent 85%);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,0.6), transparent 85%);
+  z-index: 0;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+#root {
+  position: relative;
+  z-index: 1;
+  width: 100vw;
+  max-width: 100%;
+  min-height: 100vh;
 }
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  margin: 0;
 }
+
 p {
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+button, input, select, textarea {
+  font: inherit;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+/* Ant Design overrides for workbench theme */
+.ant-btn {
+  border-radius: 10px !important;
+  font-weight: 700 !important;
+  height: 32px !important;
+}
+
+.ant-input, .ant-select-selector, .ant-picker {
+  border-radius: 10px !important;
+  border-color: var(--line) !important;
+  background: linear-gradient(180deg, #ffffff, #f7fbff) !important;
+}
+
+.ant-input:focus, .ant-input-focused,
+.ant-select-focused .ant-select-selector {
+  border-color: var(--blue-3) !important;
+  box-shadow: 0 0 0 4px rgba(110, 182, 255, 0.16) !important;
+}
+
+.ant-tabs-nav {
+  margin: 0 !important;
+}
+
+.ant-modal-content {
+  border-radius: var(--radius-xl) !important;
+}
+
+.ant-card {
+  border-radius: var(--radius-lg) !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(185, 208, 234, 0.6);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(185, 208, 234, 0.9);
 }

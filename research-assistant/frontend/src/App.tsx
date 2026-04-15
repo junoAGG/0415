@@ -1,120 +1,129 @@
-import { useState } from 'react';
-import { Layout, Menu, Badge } from 'antd';
-import { FileTextOutlined, BarChartOutlined, SettingOutlined, LineChartOutlined } from '@ant-design/icons';
+import { useState, useEffect } from 'react';
 import ReportList from './pages/ReportList';
 import Analysis from './pages/Analysis';
 import AIStatus from './components/AIStatus';
-import { colors, gradients, shadows, borderRadius } from './styles/fintech-theme';
+import { reportApi } from './services/api';
+import type { Report } from './types';
 import './App.css';
 
-const { Header, Content } = Layout;
-
 function App() {
-  const [currentPage, setCurrentPage] = useState<'reports' | 'analysis' | 'settings'>('reports');
+  const [currentPage, setCurrentPage] = useState<'reportsPage' | 'analysisPage'>('reportsPage');
+  const [reports, setReports] = useState<Report[]>([]);
+
+  // 加载研报用于顶部统计
+  const loadReports = async () => {
+    try {
+      const res = await reportApi.list({ page_size: 100 });
+      setReports(res.items);
+    } catch {
+      // 静默处理
+    }
+  };
+
+  useEffect(() => {
+    loadReports();
+  }, []);
+
+  // 计算摘要指标
+  const total = reports.length;
+  const completed = reports.filter(r => r.status === 'completed').length;
+  const positiveRatings = ['买入', '增持', '推荐', '谨慎增持'];
+  const positive = reports.filter(r => positiveRatings.includes(r.rating)).length;
+  const positiveRatio = total > 0 ? ((positive / total) * 100).toFixed(0) + '%' : '0%';
+  const upsides = reports
+    .filter(r => r.target_price && r.current_price)
+    .map(r => ((r.target_price! - r.current_price!) / r.current_price!) * 100);
+  const avgUpside = upsides.length > 0
+    ? (upsides.reduce((a, b) => a + b, 0) / upsides.length).toFixed(1) + '%'
+    : '0%';
+  const industryCount: Record<string, number> = {};
+  reports.forEach(r => {
+    const ind = (r as any).industry || '未知';
+    industryCount[ind] = (industryCount[ind] || 0) + 1;
+  });
+  const topIndustry = Object.entries(industryCount).sort((a, b) => b[1] - a[1])[0]?.[0] || '-';
 
   const renderContent = () => {
     switch (currentPage) {
-      case 'reports':
-        return <ReportList />;
-      case 'analysis':
+      case 'reportsPage':
+        return <ReportList onDataChange={loadReports} />;
+      case 'analysisPage':
         return <Analysis />;
-      case 'settings':
-        return <div className="p-6"><h2 className="text-2xl font-bold">设置</h2><p className="mt-4 text-gray-500">设置功能开发中...</p></div>;
       default:
-        return <ReportList />;
+        return <ReportList onDataChange={loadReports} />;
     }
   };
 
   return (
-    <Layout style={{ minHeight: '100vh', width: '100vw', maxWidth: '100%' }}>
-      {/* 顶部Header：金融科技专业风格 */}
-      <Header style={{ 
-        background: gradients.header,
-        padding: '0 32px', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        boxShadow: shadows.lg,
-        width: '100%',
-        height: '64px',
-        position: 'fixed',
-        top: 0,
-        zIndex: 1000,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '48px' }}>
-          {/* Logo区域 - 简洁专业风格 */}
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '10px',
-            cursor: 'pointer',
-          }}>
-            <div style={{
-              width: '32px',
-              height: '32px',
-              background: gradients.accent,
-              borderRadius: borderRadius.sm,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: shadows.glow,
-            }}>
-              <LineChartOutlined style={{ fontSize: '18px', color: colors.textPrimary }} />
+    <div className="app-shell">
+      <div className="shell-card">
+        {/* 顶部导航栏 */}
+        <header className="topbar">
+          <div className="topbar-left">
+            <div className="brand">
+              <div className="brand-mark" />
+              <div className="brand-copy">
+                <h1>智能研报</h1>
+                <p>AI驱动的投研工作台</p>
+              </div>
             </div>
-            <h1 style={{ 
-              margin: 0, 
-              fontSize: '18px', 
-              fontWeight: 600, 
-              whiteSpace: 'nowrap',
-              color: '#fff',
-              letterSpacing: '0.5px',
-            }}>投研助手</h1>
+            <nav className="nav-tabs">
+              <button
+                className={`nav-tab ${currentPage === 'reportsPage' ? 'active' : ''}`}
+                onClick={() => setCurrentPage('reportsPage')}
+              >
+                研报管理
+              </button>
+              <button
+                className={`nav-tab ${currentPage === 'analysisPage' ? 'active' : ''}`}
+                onClick={() => setCurrentPage('analysisPage')}
+              >
+                智能分析
+              </button>
+            </nav>
           </div>
-          
-          {/* 导航菜单 */}
-          <Menu
-            mode="horizontal"
-            selectedKeys={[currentPage]}
-            onClick={({ key }) => setCurrentPage(key as any)}
-            style={{ 
-              background: 'transparent',
-              borderBottom: 'none',
-              minWidth: '300px',
-            }}
-            theme="dark"
-            items={[
-              {
-                key: 'reports',
-                icon: <FileTextOutlined />,
-                label: '研报管理',
-              },
-              {
-                key: 'analysis',
-                icon: <BarChartOutlined />,
-                label: '智能分析',
-              },
-              {
-                key: 'settings',
-                icon: <SettingOutlined />,
-                label: '系统设置',
-              },
-            ]}
-          />
-        </div>
-        <AIStatus />
-      </Header>
-      
-      {/* 主内容区 */}
-      <Content style={{ 
-        marginTop: '64px', 
-        height: 'calc(100vh - 64px)', 
-        overflow: 'auto',
-        background: colors.background,
-      }}>
-        {renderContent()}
-      </Content>
-    </Layout>
+          <AIStatus />
+        </header>
+
+        {/* 主内容区 */}
+        <main className="main-content">
+          {/* 摘要指标条 */}
+          <section className="summary-strip">
+            <div className="metric-card">
+              <div className="metric-label">在库研报</div>
+              <div className="metric-value">{total}</div>
+              <div className="metric-sub">含自动抓取与手工上传，支持状态追踪</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">已完成解析</div>
+              <div className="metric-value">{completed}</div>
+              <div className="metric-sub">可直接进入对比分析与问答链路</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">买入/增持占比</div>
+              <div className="metric-value">{positiveRatio}</div>
+              <div className="metric-sub">反映当前样本中主流卖方态度</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">平均目标涨幅</div>
+              <div className="metric-value">{avgUpside}</div>
+              <div className="metric-sub">基于目标价与现价计算的样本均值</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">关注行业</div>
+              <div className="metric-value">{topIndustry}</div>
+              <div className="metric-sub">根据样本覆盖频次自动聚合</div>
+            </div>
+          </section>
+
+          {/* 页面内容 */}
+          <div className="page-enter" key={currentPage}>
+            {renderContent()}
+          </div>
+        </main>
+      </div>
+    </div>
   );
 }
 
-export default App
+export default App;

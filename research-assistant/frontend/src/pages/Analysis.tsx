@@ -1,50 +1,12 @@
-import { useState, useEffect } from 'react';
-import { 
-  Card, 
-  Tabs, 
-  Select, 
-  Button, 
-  Input, 
-  List, 
-  Typography, 
-  Tag, 
-  Space, 
-  message, 
-  Spin,
-  Empty,
-  Divider,
-  Badge,
-  Checkbox,
-  Row,
-  Col
-} from 'antd';
-import { 
-  BarChartOutlined, 
-  QuestionCircleOutlined, 
-  HistoryOutlined,
-  SendOutlined,
-  FileTextOutlined,
-  LoadingOutlined,
-  CheckCircleOutlined,
-  DiffOutlined,
-  LineChartOutlined,
-  RobotOutlined,
-  BankOutlined,
-  ArrowRightOutlined
-} from '@ant-design/icons';
+import { useState, useEffect, useRef } from 'react';
+import { message, Spin } from 'antd';
 import type { Report } from '../types';
 import type { AIQueryResponse, CompareResponse } from '../types/analysis';
 import { reportApi } from '../services/api';
 import { aiService } from '../services/aiService';
-import { colors, gradients, shadows, borderRadius } from '../styles/fintech-theme';
-
-const { TabPane } = Tabs;
-const { TextArea } = Input;
-const { Title, Text, Paragraph } = Typography;
 
 export default function Analysis() {
   const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(false);
   const [activeMode, setActiveMode] = useState<'compare' | 'qa'>('compare');
   
   // 对比分析状态
@@ -55,31 +17,34 @@ export default function Analysis() {
   
   // AI问答状态
   const [question, setQuestion] = useState('');
-  const [selectedContextReports, setSelectedContextReports] = useState<string[]>([]);
-  const [chatHistory, setChatHistory] = useState<Array<{type: 'user' | 'ai', content: string, sources?: any[]}>>([]);
+  const [chatHistory, setChatHistory] = useState<Array<{type: 'user' | 'ai', content: string, sources?: any[]}>>([
+    { type: 'ai', content: '你可以直接提问，例如：\'对比宁德时代和比亚迪的盈利修复逻辑\'，或 \'当前哪些样本更适合作为组合底仓？\'', sources: [] }
+  ]);
   const [asking, setAsking] = useState(false);
+  const chatStreamRef = useRef<HTMLDivElement>(null);
 
-  // 加载研报列表
-  useEffect(() => {
-    loadReports();
-  }, []);
+  // 分析历史
+  const [history, setHistory] = useState<Array<{type: string, title: string, created_at: string, result_summary: string}>>([]);
+
+  useEffect(() => { loadReports(); }, []);
 
   const loadReports = async () => {
     try {
       const res = await reportApi.list({ page_size: 100 });
       setReports(res.items.filter(r => r.status === 'completed'));
-    } catch (error) {
-      message.error('加载研报列表失败');
-    }
+    } catch { message.error('加载研报列表失败'); }
   };
 
-  // 切换研报选择
-  const toggleReportSelection = (reportId: string) => {
-    setSelectedReports(prev => 
-      prev.includes(reportId) 
-        ? prev.filter(id => id !== reportId)
-        : [...prev, reportId]
-    );
+  const toggleReportSelection = (id: string) => {
+    setSelectedReports(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const selectAll = () => {
+    setSelectedReports(reports.map(r => r.id));
+  };
+
+  const addHistory = (type: string, title: string, summary: string) => {
+    setHistory(prev => [{ type, title, created_at: '刚刚', result_summary: summary }, ...prev].slice(0, 8));
   };
 
   // 执行对比分析
@@ -88,466 +53,322 @@ export default function Analysis() {
       message.warning('请至少选择2份研报进行对比');
       return;
     }
-    
     setComparing(true);
     try {
       const result = await aiService.compareReports(selectedReports, compareType);
       setCompareResult(result);
+      const companies = reports.filter(r => selectedReports.includes(r.id)).map(r => r.company).join(' / ');
+      addHistory('compare', `${companies} 对比`, '已生成新的对比分析结果。');
       message.success('分析完成');
-    } catch (error) {
-      message.error('分析失败');
-    } finally {
-      setComparing(false);
-    }
+    } catch { message.error('分析失败'); }
+    finally { setComparing(false); }
   };
 
   // 执行AI问答
   const handleAsk = async () => {
-    if (!question.trim()) {
-      message.warning('请输入问题');
-      return;
-    }
-    
-    const userQuestion = question.trim();
-    setChatHistory(prev => [...prev, { type: 'user', content: userQuestion }]);
+    if (!question.trim()) return;
+    const q = question.trim();
+    setChatHistory(prev => [...prev, { type: 'user', content: q }]);
     setQuestion('');
     setAsking(true);
-    
     try {
       const result = await aiService.askQuestion({
-        question: userQuestion,
-        report_ids: selectedContextReports.length > 0 ? selectedContextReports : undefined,
+        question: q,
+        report_ids: selectedReports.length > 0 ? selectedReports : undefined,
       });
-      
-      setChatHistory(prev => [...prev, { 
-        type: 'ai', 
-        content: result.answer,
-        sources: result.sources
-      }]);
-    } catch (error) {
-      message.error('获取回答失败');
-      setChatHistory(prev => [...prev, { 
-        type: 'ai', 
-        content: '抱歉，我暂时无法回答这个问题，请稍后重试。'
-      }]);
-    } finally {
-      setAsking(false);
-    }
+      setChatHistory(prev => [...prev, { type: 'ai', content: result.answer, sources: result.sources }]);
+      addHistory('query', `提问：${q}`, '已根据选定研报样本生成回答。');
+    } catch {
+      setChatHistory(prev => [...prev, { type: 'ai', content: '抱歉，暂时无法回答，请稍后重试。' }]);
+    } finally { setAsking(false); }
   };
 
-  // 渲染左侧选择面板
-  const renderLeftPanel = () => {
-    if (activeMode === 'compare') {
+  useEffect(() => {
+    if (chatStreamRef.current) chatStreamRef.current.scrollTop = chatStreamRef.current.scrollHeight;
+  }, [chatHistory]);
+
+  // 渲染对比结果
+  const renderCompareView = () => {
+    const selected = reports.filter(r => selectedReports.includes(r.id));
+    if (selected.length < 2 && !compareResult) {
       return (
-        <div style={{ padding: '16px' }}>
-          <div style={{ marginBottom: 16 }}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>选择研报进行对比</Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>已选择 {selectedReports.length} 份研报</Text>
-          </div>
-          
-          {/* 对比维度和按钮放在同一行 */}
-          <div style={{ marginBottom: 16 }}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>对比维度</Text>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <Select
-                value={compareType}
-                onChange={setCompareType}
-                style={{ flex: 1 }}
-                options={[
-                  { label: '公司对比', value: 'company' },
-                  { label: '行业对比', value: 'industry' },
-                  { label: '自定义对比', value: 'custom' },
-                ]}
-              />
-              <Button 
-                type="primary" 
-                onClick={handleCompare}
-                loading={comparing}
-                disabled={selectedReports.length < 2}
-                icon={<BarChartOutlined />}
-                style={{ 
-                  background: selectedReports.length < 2 ? undefined : gradients.primary,
-                  border: 'none',
-                  boxShadow: selectedReports.length < 2 ? undefined : shadows.md,
-                  color: '#fff',
-                  fontWeight: 500,
-                }}
-              >
-                开始对比
-              </Button>
-            </div>
-          </div>
-
-          <Divider style={{ margin: '16px 0' }} />
-
+        <div className="empty-state">
           <div>
-            <Text strong style={{ display: 'block', marginBottom: 12 }}>研报列表</Text>
-            <List
-              dataSource={reports}
-              renderItem={(report) => (
-                <List.Item 
-                  style={{ 
-                    padding: '8px 0',
-                    cursor: 'pointer',
-                    backgroundColor: selectedReports.includes(report.id) ? '#e6f7ff' : 'transparent'
-                  }}
-                  onClick={() => toggleReportSelection(report.id)}
-                >
-                  <Checkbox 
-                    checked={selectedReports.includes(report.id)}
-                    onChange={() => toggleReportSelection(report.id)}
-                    style={{ marginRight: 8 }}
-                  />
-                  <div style={{ flex: 1, overflow: 'hidden' }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {report.title}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#666' }}>
-                      {report.company} | {report.broker}
-                    </div>
-                  </div>
-                </List.Item>
-              )}
-            />
+            <h3>等待对比样本</h3>
+            <p className="report-desc">请在左侧至少选择 2 份已完成研报，再执行对比分析。</p>
           </div>
         </div>
       );
     }
 
-    // QA 模式
+    if (!compareResult) {
+      return (
+        <div className="empty-state">
+          <div>
+            <h3>点击"开始对比"</h3>
+            <p className="report-desc">已选择 {selected.length} 份研报，点击上方按钮执行分析。</p>
+          </div>
+        </div>
+      );
+    }
+
+    const titles = selected.map(r => r.company).join(' / ');
     return (
-      <div style={{ padding: '16px' }}>
-        <div style={{ marginBottom: 16 }}>
-          <Text strong style={{ display: 'block', marginBottom: 8 }}>选择参考研报</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>不选择则使用全部研报作为知识库</Text>
+      <div className="detail-wrap">
+        <div className="detail-hero">
+          <div className="section-kicker">Compare Result</div>
+          <h2 className="detail-title">{titles} 对比分析</h2>
+          <div className="report-desc">
+            对比维度：{compareType === 'company' ? '公司对比' : compareType === 'industry' ? '行业对比' : '自定义对比'} · 样本 {selected.length} 份
+          </div>
         </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <Button 
-            type="default"
-            size="small"
-            onClick={() => setSelectedContextReports([])}
-            style={{ marginRight: 8 }}
-          >
-            清空选择
-          </Button>
-          <Button 
-            type="default"
-            size="small"
-            onClick={() => setSelectedContextReports(reports.map(r => r.id))}
-          >
-            全选
-          </Button>
-        </div>
-
-        <Divider style={{ margin: '16px 0' }} />
-
-        <List
-          dataSource={reports}
-          renderItem={(report) => (
-            <List.Item 
-              style={{ 
-                padding: '8px 0',
-                cursor: 'pointer',
-                backgroundColor: selectedContextReports.includes(report.id) ? '#e6f7ff' : 'transparent'
-              }}
-              onClick={() => {
-                setSelectedContextReports(prev => 
-                  prev.includes(report.id) 
-                    ? prev.filter(id => id !== report.id)
-                    : [...prev, report.id]
-                );
-              }}
-            >
-              <Checkbox 
-                checked={selectedContextReports.includes(report.id)}
-                style={{ marginRight: 8 }}
-              />
-              <div style={{ flex: 1, overflow: 'hidden' }}>
-                <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {report.title}
-                </div>
-                <div style={{ fontSize: 12, color: '#666' }}>
-                  {report.company} | {report.broker}
-                </div>
+        <div className="tab-panel" style={{ display: 'block', height: 'calc(100% - 130px)', overflow: 'auto' }}>
+          <div className="brief-box">
+            <div className="section-kicker">分析总结</div>
+            <h4 style={{ margin: '0 0 8px', fontSize: 14 }}>核心结论</h4>
+            <p className="section-copy">{compareResult.comparison_result}</p>
+          </div>
+          <div className="compare-grid">
+            <div className="compare-box">
+              <h4>共同点</h4>
+              <ul className="bullet-list">
+                {compareResult.similarities?.map((item, i) => <li key={i}>{item}</li>)}
+              </ul>
+            </div>
+            <div className="compare-box">
+              <h4>差异点</h4>
+              <ul className="bullet-list">
+                {compareResult.differences?.map((item, i) => <li key={i}>{item}</li>)}
+              </ul>
+            </div>
+          </div>
+          <div className="compare-box" style={{ marginTop: 14 }}>
+            <h4>投资建议</h4>
+            <ul className="bullet-list">
+              {compareResult.recommendations?.map((item, i) => <li key={i}>{item}</li>)}
+            </ul>
+          </div>
+          <div className="source-list">
+            {selected.map(r => (
+              <div className="source-item" key={r.id}>
+                <h4>{r.company} · {r.rating}</h4>
+                <div className="report-desc">{r.core_views?.split('\n')[0] || '-'}</div>
               </div>
-            </List.Item>
-          )}
-        />
+            ))}
+          </div>
+        </div>
       </div>
     );
   };
 
-  // 渲染中间/右侧内容区
-  const renderMainContent = () => {
-    if (activeMode === 'compare') {
-      if (!compareResult) {
-        return (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={
-              <div>
-                <p>请选择至少2份研报进行对比分析</p>
-                <Text type="secondary">支持公司对比、行业对比和自定义对比</Text>
-              </div>
-            }
-            style={{ marginTop: '100px' }}
-          />
-        );
-      }
+  // 渲染问答视图
+  const renderQAView = () => {
+    const contextReports = selectedReports.length > 0
+      ? reports.filter(r => selectedReports.includes(r.id))
+      : reports;
 
-      return (
-        <div style={{ padding: '24px', height: '100%', overflow: 'auto' }}>
-          <Title level={4} style={{ marginBottom: 24 }}>
-            <DiffOutlined style={{ marginRight: 8 }} />
-            对比分析结果
-          </Title>
-          
-          <Space direction="vertical" style={{ width: '100%' }} size="large">
-            <Card title="分析总结" size="small">
-              <Paragraph>{compareResult.comparison_result}</Paragraph>
-            </Card>
-            
-            <Row gutter={16}>
-              <Col span={12}>
-                <Card 
-                  title={<><CheckCircleOutlined style={{ color: '#52c41a' }} /> 共同点</>} 
-                  size="small"
-                >
-                  <List
-                    dataSource={compareResult.similarities}
-                    renderItem={(item, index) => (
-                      <List.Item>
-                        <Badge count={index + 1} style={{ backgroundColor: '#52c41a' }} />
-                        <Text style={{ marginLeft: 8 }}>{item}</Text>
-                      </List.Item>
-                    )}
-                  />
-                </Card>
-              </Col>
-              <Col span={12}>
-                <Card 
-                  title={<><LineChartOutlined style={{ color: '#faad14' }} /> 差异点</>} 
-                  size="small"
-                >
-                  <List
-                    dataSource={compareResult.differences}
-                    renderItem={(item, index) => (
-                      <List.Item>
-                        <Badge count={index + 1} style={{ backgroundColor: '#faad14' }} />
-                        <Text style={{ marginLeft: 8 }}>{item}</Text>
-                      </List.Item>
-                    )}
-                  />
-                </Card>
-              </Col>
-            </Row>
-            
-            <Card 
-              title="投资建议" 
-              size="small"
-              headStyle={{ backgroundColor: '#e6f7ff' }}
-            >
-              <List
-                dataSource={compareResult.recommendations}
-                renderItem={(item, index) => (
-                  <List.Item>
-                    <Badge count={index + 1} style={{ backgroundColor: '#1890ff' }} />
-                    <Text style={{ marginLeft: 8 }} type="success">{item}</Text>
-                  </List.Item>
-                )}
-              />
-            </Card>
-          </Space>
-        </div>
-      );
-    }
-
-    // QA 模式
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        {/* 对话历史 */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
-          {chatHistory.length === 0 ? (
-            <Empty 
-              description="开始提问，获取AI智能分析"
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              style={{ marginTop: '100px' }}
-            />
-          ) : (
-            <List
-              dataSource={chatHistory}
-              renderItem={(item, index) => (
-                <List.Item key={index} style={{ backgroundColor: item.type === 'user' ? '#f5f5f5' : 'transparent', padding: '16px 0' }}>
-                  <div style={{ width: '100%' }}>
-                    <Space align="start">
-                      {item.type === 'user' ? (
-                        <>
-                          <div style={{ 
-                            width: 32, 
-                            height: 32, 
-                            borderRadius: '50%', 
-                            backgroundColor: '#1890ff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            fontWeight: 'bold'
-                          }}>
-                            我
-                          </div>
-                          <div>
-                            <Text strong>我的问题</Text>
-                            <Paragraph style={{ marginBottom: 0 }}>{item.content}</Paragraph>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div style={{ 
-                            width: 32, 
-                            height: 32, 
-                            borderRadius: '50%', 
-                            backgroundColor: '#52c41a',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white'
-                          }}>
-                            AI
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <Text strong type="success">AI助手</Text>
-                            <Paragraph style={{ marginBottom: 8 }}>{item.content}</Paragraph>
-                            {item.sources && item.sources.length > 0 && (
-                              <div style={{ marginTop: 8 }}>
-                                <Text type="secondary" style={{ fontSize: 12 }}>参考来源：</Text>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                                  {item.sources.map((source, idx) => (
-                                    <Tag key={idx} icon={<FileTextOutlined />} size="small">
-                                      {source.report_title}
-                                    </Tag>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </Space>
-                  </div>
-                </List.Item>
+      <div className="detail-wrap">
+        <div className="detail-hero">
+          <div className="section-kicker">AI Query</div>
+          <h2 className="detail-title">研报问答工作台</h2>
+          <div className="report-desc">当前知识范围：{contextReports.map(r => r.company).join(' / ') || '全部已完成研报'}</div>
+        </div>
+        <div className="chat-stream" ref={chatStreamRef}>
+          {chatHistory.map((item, i) => (
+            <div key={i} className={`chat-item ${item.type}`}>
+              <div className="meta-label">{item.type === 'user' ? '我的问题' : 'AI助手'}</div>
+              <div style={{ lineHeight: 1.8, fontSize: 13 }}>{item.content}</div>
+              {item.sources && item.sources.length > 0 && (
+                <div className="source-list" style={{ marginTop: 8 }}>
+                  {item.sources.map((s: any, j: number) => (
+                    <div className="source-item" key={j}>
+                      <h4>{s.report_title}</h4>
+                      <div className="report-desc">{s.excerpt}</div>
+                    </div>
+                  ))}
+                </div>
               )}
-            />
-          )}
+            </div>
+          ))}
           {asking && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#999', marginTop: 16 }}>
-              <LoadingOutlined />
-              <Text type="secondary">AI正在思考...</Text>
+            <div className="chat-item" style={{ opacity: 0.7 }}>
+              <div className="meta-label">AI助手</div>
+              <Spin size="small" /> <span style={{ marginLeft: 8, fontSize: 13, color: 'var(--text-soft)' }}>正在思考...</span>
             </div>
           )}
         </div>
-        
-        {/* 输入框 */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #f0f0f0', backgroundColor: '#fff' }}>
-          <Space.Compact style={{ width: '100%' }}>
-            <TextArea
+        <div className="chat-input">
+          <div className="chat-input-row">
+            <textarea
               value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="输入您的问题，例如：对比茅台和五粮液的盈利能力"
-              autoSize={{ minRows: 2, maxRows: 4 }}
-              onPressEnter={(e) => {
-                if (!e.shiftKey) {
+              onChange={e => setQuestion(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   handleAsk();
                 }
               }}
+              rows={3}
+              placeholder="输入问题，例如：当前哪些样本更适合作为组合底仓？"
+              style={{
+                width: '100%',
+                border: '1px solid var(--line)',
+                borderRadius: 10,
+                padding: '8px 12px',
+                background: 'linear-gradient(180deg, #fff, #f7fbff)',
+                outline: 'none',
+                resize: 'none',
+                lineHeight: 1.6,
+                fontSize: 13,
+              }}
             />
-            <Button 
-              type="primary" 
-              onClick={handleAsk}
-              loading={asking}
-              icon={<SendOutlined />}
-              style={{ height: 'auto' }}
-            >
-              发送
-            </Button>
-          </Space.Compact>
-          <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
-            提示：Shift + Enter 换行，Enter 发送
-          </Text>
+            <button className="btn primary" onClick={handleAsk} disabled={asking} style={{ height: 'auto' }}>
+              {asking ? '思考中...' : '发送问题'}
+            </button>
+          </div>
+          <div className="report-desc" style={{ marginTop: 8 }}>支持基于已选研报回答；若未选择任何样本，则默认使用全部已完成研报。</div>
         </div>
       </div>
     );
   };
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
-      {/* 左侧：模式切换 + 选择面板 */}
-      <div style={{ 
-        width: '320px', 
-        minWidth: '320px',
-        borderRight: `1px solid ${colors.border}`, 
-        display: 'flex', 
-        flexDirection: 'column',
-        background: colors.surface,
-        boxShadow: shadows.sm,
-      }}>
-        {/* 模式切换 - 金融科技风格 */}
-        <div style={{ 
-          display: 'flex', 
-          borderBottom: `1px solid ${colors.border}`,
-          background: colors.background,
-        }}>
-          <div
-            onClick={() => setActiveMode('compare')}
-            style={{
-              flex: 1,
-              padding: '16px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              backgroundColor: activeMode === 'compare' ? colors.surface : colors.background,
-              borderBottom: activeMode === 'compare' ? `3px solid ${colors.accent}` : '3px solid transparent',
-              fontWeight: activeMode === 'compare' ? 600 : 500,
-              color: activeMode === 'compare' ? colors.primary : colors.textMuted,
-              transition: 'all 0.25s ease',
-            }}
-          >
-            <BarChartOutlined style={{ marginRight: 8, fontSize: '16px' }} />
-            <span style={{ fontSize: '14px' }}>研报对比</span>
-          </div>
-          <div
-            onClick={() => setActiveMode('qa')}
-            style={{
-              flex: 1,
-              padding: '16px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              backgroundColor: activeMode === 'qa' ? colors.surface : colors.background,
-              borderBottom: activeMode === 'qa' ? `3px solid ${colors.accent}` : '3px solid transparent',
-              fontWeight: activeMode === 'qa' ? 600 : 500,
-              color: activeMode === 'qa' ? colors.primary : colors.textMuted,
-              transition: 'all 0.25s ease',
-            }}
-          >
-            <RobotOutlined style={{ marginRight: 8, fontSize: '16px' }} />
-            <span style={{ fontSize: '14px' }}>AI问答</span>
-          </div>
+    <>
+      {/* 工具栏 */}
+      <div className="panel toolbar">
+        <div className="toolbar-left">
+          <strong style={{ fontSize: 14 }}>智能分析</strong>
+          <span className="report-desc">覆盖对比分析与 AI 问答两条主流程</span>
         </div>
-
-        {/* 选择面板 */}
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          {renderLeftPanel()}
+        <div className="toolbar-right">
+          <button className="btn secondary" onClick={selectAll}>全选已完成研报</button>
+          <button className="btn primary" onClick={handleCompare} disabled={comparing}>
+            {comparing ? '分析中...' : '开始对比'}
+          </button>
         </div>
       </div>
 
-      {/* 中间/右侧：核心内容区 */}
-      <div style={{ 
-        flex: 1, 
-        overflow: 'hidden',
-        background: colors.surface,
-      }}>
-        {renderMainContent()}
+      {/* 三栏布局 */}
+      <div className="analysis-layout">
+        {/* 左栏：分析配置 */}
+        <section className="panel" style={{ height: 720 }}>
+          <div className="panel-header">
+            <div>
+              <h3 className="panel-title">分析配置</h3>
+              <div className="panel-subtitle">模式切换、研报选择、对比维度配置</div>
+            </div>
+          </div>
+          <div className="scroll-body">
+            {/* 模式切换 */}
+            <div className="mode-switch">
+              <button
+                className={`mode-btn ${activeMode === 'compare' ? 'active' : ''}`}
+                onClick={() => setActiveMode('compare')}
+              >
+                研报对比
+              </button>
+              <button
+                className={`mode-btn ${activeMode === 'qa' ? 'active' : ''}`}
+                onClick={() => setActiveMode('qa')}
+              >
+                AI问答
+              </button>
+            </div>
+
+            {/* 对比模式配置 */}
+            {activeMode === 'compare' && (
+              <div>
+                <div className="section-block">
+                  <div className="section-kicker">对比维度</div>
+                  <select
+                    className="toolbar-select"
+                    value={compareType}
+                    onChange={e => setCompareType(e.target.value as any)}
+                    style={{ width: '100%' }}
+                  >
+                    <option value="company">公司对比</option>
+                    <option value="industry">行业对比</option>
+                    <option value="custom">自定义对比</option>
+                  </select>
+                </div>
+                <div className="section-block">
+                  <div className="section-kicker">已选研报</div>
+                  <p className="section-copy">
+                    {selectedReports.length >= 2
+                      ? `当前已选 ${selectedReports.length} 份研报，可直接执行${compareType === 'company' ? '公司' : compareType === 'industry' ? '行业' : '自定义'}对比。`
+                      : '请至少选择 2 份已完成研报进行对比分析。'
+                    }
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 问答模式配置 */}
+            {activeMode === 'qa' && (
+              <div className="section-block">
+                <div className="section-kicker">参考范围</div>
+                <p className="section-copy">不选时默认使用全部已完成研报；已选时仅基于所选内容回答。</p>
+              </div>
+            )}
+
+            {/* 研报选择列表 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+              {reports.map(r => (
+                <label
+                  key={r.id}
+                  className={`selector-item ${selectedReports.includes(r.id) ? 'selected' : ''}`}
+                  onClick={() => toggleReportSelection(r.id)}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedReports.includes(r.id)}
+                    onChange={() => {}}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div>
+                    <div className="report-title" style={{ marginBottom: 6 }}>{r.title}</div>
+                    <div className="report-desc">{r.company} · {r.broker}</div>
+                    <div className="report-desc">评级 {r.rating}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* 中栏：分析结果 */}
+        <section className="panel" style={{ height: 720, overflow: 'hidden' }}>
+          {comparing ? (
+            <div className="empty-state"><Spin size="large" /><p style={{ marginTop: 16 }}>分析中，请稍候...</p></div>
+          ) : activeMode === 'compare' ? renderCompareView() : renderQAView()}
+        </section>
+
+        {/* 右栏：分析历史 */}
+        <aside className="panel" style={{ height: 720 }}>
+          <div className="panel-header">
+            <div>
+              <h3 className="panel-title">分析历史</h3>
+              <div className="panel-subtitle">保留最近对比与问答操作痕迹</div>
+            </div>
+          </div>
+          <div className="scroll-body">
+            <div className="history-list">
+              {history.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-faint)' }}>暂无历史记录</div>
+              ) : (
+                history.map((item, i) => (
+                  <div className="history-item" key={i}>
+                    <small>{item.created_at} · {item.type === 'compare' ? '对比分析' : 'AI问答'}</small>
+                    <h4>{item.title}</h4>
+                    <div className="report-desc">{item.result_summary}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </aside>
       </div>
-    </div>
+    </>
   );
 }

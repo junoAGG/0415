@@ -1,207 +1,220 @@
 /**
  * 投研助手 - 金融科技专业主题
- * Fintech Professional Design System
+ * 匹配 workbench HTML 原型的浅蓝金色设计系统
  */
 
-// 主色调 - 深蓝专业金融风
+// 主色调 - 浅蓝金色专业风
 export const colors = {
-  // 主色
-  primary: '#1a365d',      // 深海蓝 - 主品牌色
-  primaryLight: '#2c5282', // 浅海蓝
-  primaryDark: '#0d1b2a',  // 深海蓝暗色
+  // 背景色
+  bg: '#f3f8ff',
+  bgSoft: '#eef5ff',
+  panel: 'rgba(255, 255, 255, 0.92)',
+  panelStrong: '#ffffff',
   
-  // 辅助色
-  accent: '#d4af37',       // 金色 - 强调、高亮
-  accentLight: '#f0d878',  // 浅金
-  accentDark: '#b8941f',   // 深金
-  
-  // 功能色
-  success: '#059669',      // 翠绿 - 上涨、成功
-  successLight: '#10b981', // 亮绿
-  danger: '#dc2626',       // 深红 - 下跌、危险
-  dangerLight: '#ef4444',  // 亮红
-  warning: '#d97706',      // 琥珀 - 警告
-  info: '#2563eb',         // 蓝色 - 信息
-  
-  // 中性色
-  background: '#f8fafc',   // 背景灰
-  surface: '#ffffff',      // 卡片表面
-  border: '#e2e8f0',       // 边框
-  divider: '#f1f5f9',      // 分割线
+  // 边框线
+  line: '#d7e4f5',
+  lineStrong: '#b9d0ea',
   
   // 文字色
-  textPrimary: '#0f172a',   // 主文字 - 近黑
-  textSecondary: '#475569', // 次要文字
-  textMuted: '#94a3b8',     // 弱化文字
-  textInverse: '#ffffff',   // 反色文字
+  text: '#12233f',
+  textSoft: '#57708f',
+  textFaint: '#7d92ad',
+  textInverse: '#ffffff',
+  
+  // 蓝色系
+  blue1: '#dff1ff',
+  blue2: '#b7ddff',
+  blue3: '#6eb6ff',
+  blue4: '#2b6cb0',
+  blue5: '#183b70',
+  
+  // 金色系
+  gold1: '#fff3cb',
+  gold2: '#f4cf73',
+  gold3: '#d3a63d',
+  
+  // 功能色
+  green: '#18a16d',
+  red: '#cf4b5a',
+  orange: '#da8b2f',
+  
+  // 兼容旧接口
+  primary: '#183b70',
+  primaryLight: '#2b6cb0',
+  accent: '#f4cf73',
+  accentLight: '#fff3cb',
+  success: '#18a16d',
+  successLight: '#67f4b1',
+  danger: '#cf4b5a',
+  dangerLight: '#ef4444',
+  warning: '#da8b2f',
+  info: '#2b6cb0',
+  background: '#f3f8ff',
+  surface: '#ffffff',
+  border: '#d7e4f5',
+  divider: '#eef5ff',
+  textPrimary: '#12233f',
+  textSecondary: '#57708f',
+  textMuted: '#7d92ad',
 };
 
 // 渐变
 export const gradients = {
-  primary: 'linear-gradient(135deg, #1a365d 0%, #2c5282 100%)',
-  accent: 'linear-gradient(135deg, #d4af37 0%, #f0d878 100%)',
+  header: 'linear-gradient(120deg, rgba(16, 43, 86, 0.95), rgba(31, 78, 143, 0.94))',
+  primary: 'linear-gradient(135deg, #2b6cb0, #183b70)',
+  accent: 'linear-gradient(135deg, #fff4d5, #f6dc8f)',
+  gold: 'linear-gradient(135deg, #fff3cb, #f4cf73)',
+  card: 'linear-gradient(180deg, rgba(255,255,255,0.97), rgba(244,248,254,0.95))',
+  cardActive: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(235,246,255,0.98))',
+  heroDetail: `
+    radial-gradient(circle at right top, rgba(255,214,90,0.22), transparent 28%),
+    radial-gradient(circle at left bottom, rgba(127,207,255,0.16), transparent 32%),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(239,248,255,0.95))
+  `,
+  shellCard: `
+    linear-gradient(130deg, rgba(244,207,115,0.08), transparent 22%, transparent 78%, rgba(43,108,176,0.05)),
+    linear-gradient(180deg, rgba(255,255,255,0.3), transparent 18%)
+  `,
+  metricBar: 'linear-gradient(90deg, #6eb6ff, #f4cf73)',
+  bodyBg: `
+    radial-gradient(circle at top left, rgba(244, 207, 115, 0.25), transparent 28%),
+    radial-gradient(circle at top right, rgba(110, 182, 255, 0.22), transparent 24%),
+    linear-gradient(180deg, #f9fcff 0%, #f3f8ff 38%, #edf4fb 100%)
+  `,
+  input: 'linear-gradient(180deg, #ffffff, #f7fbff)',
+  btnSecondary: 'linear-gradient(135deg, #ffffff, #edf6ff)',
   success: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
   danger: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
-  card: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-  header: 'linear-gradient(90deg, #0d1b2a 0%, #1a365d 50%, #2c5282 100%)',
 };
 
 // 阴影
 export const shadows = {
-  sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-  md: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)',
-  lg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
-  xl: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
-  glow: '0 0 20px rgba(212, 175, 55, 0.3)',
-  card: '0 2px 8px rgba(26, 54, 93, 0.08)',
-  cardHover: '0 8px 24px rgba(26, 54, 93, 0.15)',
+  lg: '0 18px 44px rgba(24, 59, 112, 0.1)',
+  md: '0 10px 24px rgba(39, 76, 126, 0.08)',
+  sm: '0 4px 12px rgba(39, 76, 126, 0.05)',
+  card: '0 10px 24px rgba(39, 76, 126, 0.08)',
+  cardHover: '0 10px 20px rgba(31, 78, 143, 0.12)',
+  glow: '0 0 14px #67f4b1',
+  btnPrimary: '0 8px 18px rgba(43, 108, 176, 0.22)',
+  btnGold: '0 8px 18px rgba(244, 207, 115, 0.24)',
 };
 
 // 圆角
 export const borderRadius = {
-  sm: '4px',
-  md: '8px',
-  lg: '12px',
-  xl: '16px',
-  full: '9999px',
+  xl: '20px',
+  lg: '14px',
+  md: '12px',
+  sm: '8px',
+  xs: '6px',
+  full: '999px',
+  shell: '22px',
+  btn: '10px',
+  card: '14px',
+  chip: '999px',
+  tab: '10px',
 };
 
 // 间距
 export const spacing = {
   xs: '4px',
   sm: '8px',
-  md: '16px',
-  lg: '24px',
-  xl: '32px',
-  xxl: '48px',
+  md: '12px',
+  lg: '16px',
+  xl: '24px',
+  xxl: '32px',
 };
 
 // 字体
 export const typography = {
-  fontFamily: '"Inter", "PingFang SC", "Microsoft YaHei", sans-serif',
+  fontFamily: '"PingFang SC", "Microsoft YaHei", sans-serif',
+  fontDisplay: '"PingFang SC", "Microsoft YaHei", sans-serif',
   fontSize: {
-    xs: '12px',
-    sm: '14px',
-    md: '16px',
-    lg: '18px',
-    xl: '20px',
-    xxl: '24px',
-    display: '32px',
+    xs: '10px',
+    sm: '11px',
+    md: '12px',
+    base: '13px',
+    lg: '14px',
+    xl: '15px',
+    '2xl': '18px',
+    '3xl': '24px',
+    display: '28px',
   },
   fontWeight: {
     normal: 400,
     medium: 500,
     semibold: 600,
     bold: 700,
-  },
-  lineHeight: {
-    tight: 1.25,
-    normal: 1.5,
-    relaxed: 1.75,
+    extrabold: 800,
   },
 };
 
 // 动画
 export const transitions = {
-  fast: '150ms ease',
-  normal: '250ms ease',
-  slow: '350ms ease',
-  bounce: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
+  fast: '0.14s ease',
+  normal: '0.22s ease',
+  slow: '0.28s ease',
 };
 
 // 组件样式预设
 export const componentStyles = {
-  // 按钮
   button: {
     primary: {
-      background: gradients.primary,
-      color: colors.textInverse,
-      border: 'none',
-      borderRadius: borderRadius.md,
-      boxShadow: shadows.md,
-      fontWeight: typography.fontWeight.semibold,
-      transition: transitions.normal,
-    },
-    accent: {
-      background: gradients.accent,
-      color: colors.textPrimary,
-      border: 'none',
-      borderRadius: borderRadius.md,
-      boxShadow: `${shadows.md}, ${shadows.glow}`,
-      fontWeight: typography.fontWeight.semibold,
-    },
-    ghost: {
-      background: 'transparent',
-      color: colors.primary,
-      border: `1px solid ${colors.border}`,
-      borderRadius: borderRadius.md,
-    },
-  },
-  
-  // 卡片
-  card: {
-    background: colors.surface,
-    borderRadius: borderRadius.lg,
-    boxShadow: shadows.card,
-    border: `1px solid ${colors.border}`,
-    transition: transitions.normal,
-  },
-  
-  // 标签
-  tag: {
-    auto: {
-      background: 'linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)',
       color: '#fff',
-      border: 'none',
-      borderRadius: borderRadius.full,
+      background: gradients.primary,
+      boxShadow: shadows.btnPrimary,
+      borderRadius: borderRadius.btn,
+      fontWeight: 700,
     },
-    rating: {
-      buy: { background: colors.success, color: '#fff' },
-      hold: { background: colors.warning, color: '#fff' },
-      sell: { background: colors.danger, color: '#fff' },
+    secondary: {
+      color: colors.blue5,
+      background: gradients.btnSecondary,
+      border: `1px solid ${colors.line}`,
+      borderRadius: borderRadius.btn,
     },
-    status: {
-      completed: { background: '#dcfce7', color: colors.success, border: `1px solid ${colors.success}` },
-      pending: { background: '#fef3c7', color: colors.warning, border: `1px solid ${colors.warning}` },
-      error: { background: '#fee2e2', color: colors.danger, border: `1px solid ${colors.danger}` },
+    gold: {
+      color: '#6b4b00',
+      background: gradients.gold,
+      boxShadow: shadows.btnGold,
+      borderRadius: borderRadius.btn,
+      fontWeight: 700,
     },
   },
-  
-  // 输入框
+  card: {
+    background: colors.panel,
+    borderRadius: borderRadius.xl,
+    boxShadow: shadows.md,
+    border: `1px solid rgba(185, 208, 234, 0.9)`,
+  },
   input: {
-    background: colors.surface,
-    border: `1px solid ${colors.border}`,
-    borderRadius: borderRadius.md,
-    focusBorder: colors.primary,
-    focusShadow: `0 0 0 3px rgba(26, 54, 93, 0.1)`,
+    border: `1px solid ${colors.line}`,
+    background: gradients.input,
+    borderRadius: borderRadius.btn,
   },
-  
-  // 导航
-  nav: {
-    background: gradients.header,
-    height: '64px',
-    item: {
-      color: 'rgba(255, 255, 255, 0.7)',
-      activeColor: colors.accent,
-      hoverColor: '#fff',
-    },
+  chip: {
+    auto: { color: '#6f4d00', background: 'linear-gradient(135deg, #fff4d5, #f6dc8f)' },
+    upload: { color: '#1b4d88', background: 'linear-gradient(135deg, #edf6ff, #d8ebff)' },
+    completed: { color: '#116f50', background: '#def5eb', border: '1px solid #a4e1c5' },
+    pending: { color: '#875600', background: '#fff1d6', border: '1px solid #f3d08b' },
+    failed: { color: '#a42a3a', background: '#ffe0e5', border: '1px solid #f0a8b5' },
+    parsing: { color: '#185da7', background: '#e0f0ff', border: '1px solid #9ecfff' },
+    rating: { color: '#173a6f', background: '#e6f3ff', border: '1px solid #bddcff' },
   },
 };
 
 // 响应式断点
 export const breakpoints = {
   sm: '640px',
-  md: '768px',
-  lg: '1024px',
-  xl: '1280px',
-  xxl: '1536px',
+  md: '980px',
+  lg: '1360px',
+  xl: '1680px',
 };
 
 // 布局
 export const layout = {
   sidebarWidth: '320px',
-  headerHeight: '64px',
-  contentMaxWidth: '1440px',
+  detailMinWidth: '720px',
+  asideWidth: '296px',
+  panelHeight: '720px',
 };
 
 export default {
