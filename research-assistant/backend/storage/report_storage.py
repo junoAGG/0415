@@ -29,8 +29,23 @@ class ReportStorage(JSONStorage):
             'target_price': report_data.get('target_price'),
             'current_price': report_data.get('current_price'),
             'core_views': report_data.get('core_views', ''),
+            # 财务预测数据
             'financial_forecast': report_data.get('financial_forecast', {}),
+            # 投资评级建议
+            'investment_rating': report_data.get('investment_rating', {}),
+            # 盈利能力指标
+            'profitability': report_data.get('profitability', {}),
+            # 成长性指标
+            'growth': report_data.get('growth', {}),
+            # 估值指标
+            'valuation': report_data.get('valuation', {}),
+            # 偿债能力指标
+            'solvency': report_data.get('solvency', {}),
+            # 现金流指标
+            'cashflow': report_data.get('cashflow', {}),
+            'content': report_data.get('content', ''),  # 研报原文内容
             'file_path': report_data.get('file_path', ''),
+            'filename': report_data.get('filename', ''),
             'file_type': report_data.get('file_type', ''),
             'file_size': report_data.get('file_size', 0),
             'status': report_data.get('status', 'pending'),  # pending, parsing, completed, failed

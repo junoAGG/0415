@@ -111,6 +111,13 @@ class ReportParser:
                 'current_price': self._extract_current_price(text),
                 'core_views': self._extract_core_views(text),
                 'financial_forecast': self._extract_financial_forecast(text),
+                # 新增详细财务指标
+                'investment_rating': self._extract_investment_rating(text),
+                'profitability': self._extract_profitability(text),
+                'growth': self._extract_growth(text),
+                'valuation': self._extract_valuation(text),
+                'solvency': self._extract_solvency(text),
+                'cashflow': self._extract_cashflow(text),
             }
         }
         return result
@@ -257,18 +264,172 @@ class ReportParser:
         
         # 尝试提取营收、利润预测
         patterns = {
-            'revenue_growth': r'营收(?:增长)?[：:]\s*([\d\.]+)%',
-            'profit_growth': r'利润(?:增长)?[：:]\s*([\d\.]+)%',
-            'eps': r'EPS[：:]\s*([\d\.]+)',
-            'pe': r'PE[：:]\s*([\d\.]+)',
+            'revenue_2024': r'2024[年]?\s*营收[：:]?\s*([\d,\.]+)\s*(?:亿元|亿)',
+            'revenue_2025': r'2025[年]?\s*营收[：:]?\s*([\d,\.]+)\s*(?:亿元|亿)',
+            'net_profit_2024': r'2024[年]?\s*(?:净利润|归母净利润)[：:]?\s*([\d,\.]+)\s*(?:亿元|亿)',
+            'net_profit_2025': r'2025[年]?\s*(?:净利润|归母净利润)[：:]?\s*([\d,\.]+)\s*(?:亿元|亿)',
+            'eps_2024': r'2024[年]?\s*EPS[：:]?\s*([\d\.]+)',
+            'eps_2025': r'2025[年]?\s*EPS[：:]?\s*([\d\.]+)',
         }
         
         for key, pattern in patterns.items():
             match = re.search(pattern, text)
             if match:
                 try:
-                    forecast[key] = float(match.group(1))
+                    value = match.group(1).replace(',', '')
+                    forecast[key] = float(value)
                 except:
                     pass
         
         return forecast
+    
+    def _extract_investment_rating(self, text: str) -> Dict:
+        """提取投资评级建议"""
+        rating = {}
+        
+        # 评级建议
+        if '强烈建议买入' in text or '强烈买入' in text:
+            rating['recommendation'] = '强烈建议买入'
+        elif '建议买入' in text or '买入' in text:
+            rating['recommendation'] = '建议买入'
+        elif '建议观望' in text or '中性' in text or '持有' in text:
+            rating['recommendation'] = '建议观望'
+        elif '建议卖出' in text or '减持' in text or '卖出' in text:
+            rating['recommendation'] = '建议卖出'
+        else:
+            rating['recommendation'] = self._extract_rating(text)
+        
+        # 评级变化
+        patterns = [
+            r'评级[（(]?(?:维持|上调|下调)[）)]?[：:]?\s*(\w+)',
+            r'(维持|上调|下调)\s*(\w+)评级',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                rating['change'] = match.group(1)
+                break
+        
+        # 投资期限
+        if '长期' in text or '12个月' in text:
+            rating['time_horizon'] = '12个月'
+        elif '中期' in text or '6个月' in text:
+            rating['time_horizon'] = '6个月'
+        else:
+            rating['time_horizon'] = '12个月'
+        
+        return rating
+    
+    def _extract_profitability(self, text: str) -> Dict:
+        """提取盈利能力指标"""
+        profitability = {}
+        
+        patterns = {
+            'revenue': r'营业[收入][：:]?\s*([\d,\.]+)\s*(?:亿元|亿)',
+            'net_profit': r'(?:归母)?净利润[：:]?\s*([\d,\.]+)\s*(?:亿元|亿)',
+            'gross_margin': r'毛利率[：:]?\s*([\d\.]+)%',
+            'net_margin': r'净利率[：:]?\s*([\d\.]+)%',
+            'roe': r'ROE[：:]?\s*([\d\.]+)%?',
+            'roa': r'ROA[：:]?\s*([\d\.]+)%?',
+            'roic': r'ROIC[：:]?\s*([\d\.]+)%?',
+        }
+        
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    value = match.group(1).replace(',', '')
+                    profitability[key] = float(value)
+                except:
+                    pass
+        
+        return profitability
+    
+    def _extract_growth(self, text: str) -> Dict:
+        """提取成长性指标"""
+        growth = {}
+        
+        patterns = {
+            'revenue_growth': r'营收(?:增速|增长|同比)[：:]?\s*([\d\.]+)%',
+            'profit_growth': r'净利润(?:增速|增长|同比)[：:]?\s*([\d\.]+)%',
+            'net_profit_growth': r'归母净利润(?:增速|增长|同比)[：:]?\s*([\d\.]+)%',
+            'cagr_3y': r'(?:3年|三年)复合[增速|增长率|CAGR][：:]?\s*([\d\.]+)%',
+            'cagr_5y': r'(?:5年|五年)复合[增速|增长率|CAGR][：:]?\s*([\d\.]+)%',
+        }
+        
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    growth[key] = float(match.group(1))
+                except:
+                    pass
+        
+        return growth
+    
+    def _extract_valuation(self, text: str) -> Dict:
+        """提取估值指标"""
+        valuation = {}
+        
+        patterns = {
+            'pe_ttm': r'PE[-_]?TTM[：:]?\s*([\d\.]+)',
+            'pe_2024': r'2024[年]?\s*PE[：:]?\s*([\d\.]+)',
+            'pe_2025': r'2025[年]?\s*PE[：:]?\s*([\d\.]+)',
+            'pb': r'PB[：:]?\s*([\d\.]+)',
+            'ps': r'PS[：:]?\s*([\d\.]+)',
+            'peg': r'PEG[：:]?\s*([\d\.]+)',
+            'ev_ebitda': r'EV/EBITDA[：:]?\s*([\d\.]+)',
+        }
+        
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    valuation[key] = float(match.group(1))
+                except:
+                    pass
+        
+        return valuation
+    
+    def _extract_solvency(self, text: str) -> Dict:
+        """提取偿债能力指标"""
+        solvency = {}
+        
+        patterns = {
+            'debt_to_asset': r'资产负债率[：:]?\s*([\d\.]+)%?',
+            'current_ratio': r'流动比率[：:]?\s*([\d\.]+)',
+            'quick_ratio': r'速动比率[：:]?\s*([\d\.]+)',
+            'interest_coverage': r'利息保障倍数[：:]?\s*([\d\.]+)',
+        }
+        
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    solvency[key] = float(match.group(1))
+                except:
+                    pass
+        
+        return solvency
+    
+    def _extract_cashflow(self, text: str) -> Dict:
+        """提取现金流指标"""
+        cashflow = {}
+        
+        patterns = {
+            'operating_cashflow': r'经营[性]?现金流[：:]?\s*([\d,\.]+)\s*(?:亿元|亿)',
+            'free_cashflow': r'自由现金流[：:]?\s*([\d,\.]+)\s*(?:亿元|亿)',
+            'cashflow_per_share': r'每股现金流[：:]?\s*([\d\.]+)',
+            'operating_cashflow_margin': r'现金流[营业]?利润率[：:]?\s*([\d\.]+)%',
+        }
+        
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    value = match.group(1).replace(',', '')
+                    cashflow[key] = float(value)
+                except:
+                    pass
+        
+        return cashflow

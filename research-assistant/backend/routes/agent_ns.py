@@ -4,7 +4,7 @@
 """
 import os
 import uuid
-from flask import request, current_app
+from flask import request, current_app, send_file, send_from_directory
 from flask_restx import Namespace, Resource, fields, reqparse
 from werkzeug.utils import secure_filename
 
@@ -13,6 +13,8 @@ from storage.file_storage import FileStorage
 from services.parser import ReportParser
 from services.ai_service import ai_service
 from services.report_fetcher import report_fetcher
+import os
+import mimetypes
 
 # 创建命名空间
 agent_ns = Namespace('agent', description='研报管理相关接口')
@@ -29,6 +31,60 @@ def generate_trace_id():
 
 
 # ============ API Models (用于Swagger文档) ============
+
+# 投资评级模型
+investment_rating_model = agent_ns.model('InvestmentRating', {
+    'recommendation': fields.String(description='投资建议', example='建议买入', enum=['强烈建议买入', '建议买入', '建议观望', '建议卖出']),
+    'change': fields.String(description='评级变化', example='维持'),
+    'time_horizon': fields.String(description='投资期限', example='12个月'),
+})
+
+# 盈利能力模型
+profitability_model = agent_ns.model('Profitability', {
+    'revenue': fields.Float(description='营业收入(亿元)', example=1000.5),
+    'net_profit': fields.Float(description='净利润(亿元)', example=150.3),
+    'gross_margin': fields.Float(description='毛利率(%)', example=35.5),
+    'net_margin': fields.Float(description='净利率(%)', example=15.0),
+    'roe': fields.Float(description='ROE(%)', example=18.5),
+    'roa': fields.Float(description='ROA(%)', example=10.2),
+    'roic': fields.Float(description='ROIC(%)', example=12.8),
+})
+
+# 成长性模型
+growth_model = agent_ns.model('Growth', {
+    'revenue_growth': fields.Float(description='营收增速(%)', example=25.5),
+    'profit_growth': fields.Float(description='净利润增速(%)', example=30.2),
+    'net_profit_growth': fields.Float(description='归母净利润增速(%)', example=28.5),
+    'cagr_3y': fields.Float(description='3年复合增速(%)', example=20.0),
+    'cagr_5y': fields.Float(description='5年复合增速(%)', example=18.5),
+})
+
+# 估值模型
+valuation_model = agent_ns.model('Valuation', {
+    'pe_ttm': fields.Float(description='PE-TTM', example=25.5),
+    'pe_2024': fields.Float(description='2024年PE', example=22.0),
+    'pe_2025': fields.Float(description='2025年PE', example=18.5),
+    'pb': fields.Float(description='PB', example=3.2),
+    'ps': fields.Float(description='PS', example=5.5),
+    'peg': fields.Float(description='PEG', example=1.2),
+    'ev_ebitda': fields.Float(description='EV/EBITDA', example=15.5),
+})
+
+# 偿债能力模型
+solvency_model = agent_ns.model('Solvency', {
+    'debt_to_asset': fields.Float(description='资产负债率(%)', example=45.5),
+    'current_ratio': fields.Float(description='流动比率', example=1.8),
+    'quick_ratio': fields.Float(description='速动比率', example=1.5),
+    'interest_coverage': fields.Float(description='利息保障倍数', example=12.5),
+})
+
+# 现金流模型
+cashflow_model = agent_ns.model('Cashflow', {
+    'operating_cashflow': fields.Float(description='经营性现金流(亿元)', example=200.5),
+    'free_cashflow': fields.Float(description='自由现金流(亿元)', example=120.3),
+    'cashflow_per_share': fields.Float(description='每股现金流(元)', example=5.5),
+    'operating_cashflow_margin': fields.Float(description='现金流利润率(%)', example=25.0),
+})
 
 # 研报基础模型
 report_base_model = agent_ns.model('ReportBase', {
@@ -52,6 +108,13 @@ report_base_model = agent_ns.model('ReportBase', {
 report_detail_model = agent_ns.inherit('ReportDetail', report_base_model, {
     'core_views': fields.String(description='核心观点'),
     'financial_forecast': fields.Raw(description='财务预测数据'),
+    'investment_rating': fields.Nested(investment_rating_model, description='投资评级建议'),
+    'profitability': fields.Nested(profitability_model, description='盈利能力指标'),
+    'growth': fields.Nested(growth_model, description='成长性指标'),
+    'valuation': fields.Nested(valuation_model, description='估值指标'),
+    'solvency': fields.Nested(solvency_model, description='偿债能力指标'),
+    'cashflow': fields.Nested(cashflow_model, description='现金流指标'),
+    'content': fields.String(description='研报原文内容'),
     'parse_error': fields.String(description='解析错误信息'),
     'filename': fields.String(description='文件名'),
     'file_path': fields.String(description='文件路径'),
@@ -176,18 +239,25 @@ class ReportUpload(Resource):
                 parse_result = parser.parse(result['file_path'], file_ext)
                 
                 if parse_result['success']:
+                    data = parse_result['data']
                     report_storage.update(report['id'], {
                         'status': 'completed',
-                        'title': parse_result['data'].get('title', report['title']),
-                        'company': parse_result['data'].get('company', ''),
-                        'company_code': parse_result['data'].get('company_code', ''),
-                        'broker': parse_result['data'].get('broker', ''),
-                        'analyst': parse_result['data'].get('analyst', ''),
-                        'rating': parse_result['data'].get('rating', ''),
-                        'target_price': parse_result['data'].get('target_price'),
-                        'current_price': parse_result['data'].get('current_price'),
-                        'core_views': parse_result['data'].get('core_views', ''),
-                        'financial_forecast': parse_result['data'].get('financial_forecast', {}),
+                        'title': data.get('title', report['title']),
+                        'company': data.get('company', ''),
+                        'company_code': data.get('company_code', ''),
+                        'broker': data.get('broker', ''),
+                        'analyst': data.get('analyst', ''),
+                        'rating': data.get('rating', ''),
+                        'target_price': data.get('target_price'),
+                        'current_price': data.get('current_price'),
+                        'core_views': data.get('core_views', ''),
+                        'financial_forecast': data.get('financial_forecast', {}),
+                        'investment_rating': data.get('investment_rating', {}),
+                        'profitability': data.get('profitability', {}),
+                        'growth': data.get('growth', {}),
+                        'valuation': data.get('valuation', {}),
+                        'solvency': data.get('solvency', {}),
+                        'cashflow': data.get('cashflow', {}),
                     })
                 else:
                     report_storage.update(report['id'], {
@@ -335,18 +405,25 @@ class ReportReparse(Resource):
             parse_result = parser.parse(report['file_path'], report['file_type'])
             
             if parse_result['success']:
+                data = parse_result['data']
                 updated = report_storage.update(report_id, {
                     'status': 'completed',
-                    'title': parse_result['data'].get('title', report['title']),
-                    'company': parse_result['data'].get('company', ''),
-                    'company_code': parse_result['data'].get('company_code', ''),
-                    'broker': parse_result['data'].get('broker', ''),
-                    'analyst': parse_result['data'].get('analyst', ''),
-                    'rating': parse_result['data'].get('rating', ''),
-                    'target_price': parse_result['data'].get('target_price'),
-                    'current_price': parse_result['data'].get('current_price'),
-                    'core_views': parse_result['data'].get('core_views', ''),
-                    'financial_forecast': parse_result['data'].get('financial_forecast', {}),
+                    'title': data.get('title', report['title']),
+                    'company': data.get('company', ''),
+                    'company_code': data.get('company_code', ''),
+                    'broker': data.get('broker', ''),
+                    'analyst': data.get('analyst', ''),
+                    'rating': data.get('rating', ''),
+                    'target_price': data.get('target_price'),
+                    'current_price': data.get('current_price'),
+                    'core_views': data.get('core_views', ''),
+                    'financial_forecast': data.get('financial_forecast', {}),
+                    'investment_rating': data.get('investment_rating', {}),
+                    'profitability': data.get('profitability', {}),
+                    'growth': data.get('growth', {}),
+                    'valuation': data.get('valuation', {}),
+                    'solvency': data.get('solvency', {}),
+                    'cashflow': data.get('cashflow', {}),
                 })
                 return {
                     'code': 0,
@@ -366,6 +443,83 @@ class ReportReparse(Resource):
                 'parse_error': str(e)
             })
             return {'code': 'PARSE_FAILED', 'message': str(e), 'data': None, 'trace_id': generate_trace_id()}, 422
+
+
+@agent_ns.route('/reports/<string:report_id>/download')
+@agent_ns.param('report_id', '研报ID')
+class ReportDownload(Resource):
+    """研报PDF下载接口"""
+    
+    @agent_ns.doc('download_report')
+    @agent_ns.response(200, '下载成功')
+    @agent_ns.response(404, '研报不存在', error_response_model)
+    def get(self, report_id):
+        """
+        下载研报PDF文件
+        
+        返回PDF文件流，支持浏览器下载
+        """
+        report = report_storage.get(report_id)
+        
+        if not report:
+            return {'code': 'REPORT_NOT_FOUND', 'message': '研报不存在或已删除', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        filename = report.get('filename')
+        if not filename:
+            return {'code': 'FILE_NOT_FOUND', 'message': '文件不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        filepath = file_storage.get(filename)
+        if not filepath or not os.path.exists(filepath):
+            return {'code': 'FILE_NOT_FOUND', 'message': '文件不存在或已被删除', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        # 设置下载文件名
+        download_name = f"{report.get('company', '研报')}_{report.get('broker', '')}_{report.get('title', '未命名')[:20]}.pdf"
+        
+        return send_file(
+            filepath,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=download_name
+        )
+
+
+@agent_ns.route('/reports/<string:report_id>/preview')
+@agent_ns.param('report_id', '研报ID')
+class ReportPreview(Resource):
+    """研报PDF在线预览接口"""
+    
+    @agent_ns.doc('preview_report')
+    @agent_ns.response(200, '预览成功')
+    @agent_ns.response(404, '研报不存在', error_response_model)
+    def get(self, report_id):
+        """
+        在线预览研报PDF文件
+        
+        返回PDF文件流，支持浏览器内嵌预览
+        """
+        report = report_storage.get(report_id)
+        
+        if not report:
+            return {'code': 'REPORT_NOT_FOUND', 'message': '研报不存在或已删除', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        filename = report.get('filename')
+        if not filename:
+            return {'code': 'FILE_NOT_FOUND', 'message': '文件不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        filepath = file_storage.get(filename)
+        if not filepath or not os.path.exists(filepath):
+            return {'code': 'FILE_NOT_FOUND', 'message': '文件不存在或已被删除', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        # 获取文件mime类型
+        mime_type, _ = mimetypes.guess_type(filepath)
+        if not mime_type:
+            mime_type = 'application/pdf'
+        
+        return send_file(
+            filepath,
+            mimetype=mime_type,
+            as_attachment=False  # 不强制下载，支持浏览器预览
+        )
 
 
 @agent_ns.route('/ai-status')
@@ -620,7 +774,26 @@ def _build_compare_prompt(reports, compare_type):
         prompt += f"券商: {report.get('broker', '-')}\n"
         prompt += f"评级: {report.get('rating', '-')}\n"
         prompt += f"目标价: {report.get('target_price', '-')}\n"
-        prompt += f"核心观点: {report.get('core_views', '-')}\n\n"
+        prompt += f"核心观点: {report.get('core_views', '-')}\n"
+        
+        # 添加新的财务指标
+        investment_rating = report.get('investment_rating', {})
+        if investment_rating:
+            prompt += f"投资建议: {investment_rating.get('recommendation', '-')}\n"
+        
+        profitability = report.get('profitability', {})
+        if profitability:
+            prompt += f"盈利能力: 毛利率{profitability.get('gross_margin', '-')}%, 净利率{profitability.get('net_margin', '-')}%, ROE{profitability.get('roe', '-')}%\n"
+        
+        growth = report.get('growth', {})
+        if growth:
+            prompt += f"成长性: 营收增速{growth.get('revenue_growth', '-')}%, 利润增速{growth.get('profit_growth', '-')}%\n"
+        
+        valuation = report.get('valuation', {})
+        if valuation:
+            prompt += f"估值: PE-TTM {valuation.get('pe_ttm', '-')}, PB {valuation.get('pb', '-')}, PEG {valuation.get('peg', '-')}\n"
+        
+        prompt += "\n"
     
     prompt += """请按以下格式输出分析结果：
 
@@ -703,6 +876,24 @@ def _build_query_prompt(question, reports):
         prompt += f"\n研报{i}: {report.get('title', '未命名')}\n"
         prompt += f"公司: {report.get('company', '-')} ({report.get('company_code', '-')})\n"
         prompt += f"核心观点: {report.get('core_views', '-')}\n"
+        
+        # 添加新的财务指标
+        investment_rating = report.get('investment_rating', {})
+        if investment_rating:
+            prompt += f"投资建议: {investment_rating.get('recommendation', '-')}\n"
+        
+        profitability = report.get('profitability', {})
+        if profitability:
+            prompt += f"盈利能力: 营收{profitability.get('revenue', '-')}亿, 毛利率{profitability.get('gross_margin', '-')}%, ROE{profitability.get('roe', '-')}%\n"
+        
+        growth = report.get('growth', {})
+        if growth:
+            prompt += f"成长性: 营收增速{growth.get('revenue_growth', '-')}%, 利润增速{growth.get('profit_growth', '-')}%\n"
+        
+        valuation = report.get('valuation', {})
+        if valuation:
+            prompt += f"估值: PE-TTM {valuation.get('pe_ttm', '-')}, PB {valuation.get('pb', '-')}\n"
+        
         if report.get('financial_forecast'):
             prompt += f"财务预测: {str(report['financial_forecast'])}\n"
     
