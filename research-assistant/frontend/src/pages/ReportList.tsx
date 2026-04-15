@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { message, Spin } from 'antd';
-import type { Report, ReportListResponse } from '../types';
-import { reportApi } from '../services/api';
+import type { Report, ReportListResponse, StockQuote, StockFinancial, StockHistory } from '../types';
+import { reportApi, stockApi } from '../services/api';
 import UploadModal from '../components/UploadModal';
+import { CandlestickChart } from '../components/StockCharts';
 
 interface ReportListProps {
   onDataChange?: () => void;
+  onOpenStockPanel?: (code?: string) => void;
 }
 
-export default function ReportList({ onDataChange }: ReportListProps) {
+export default function ReportList({ onDataChange, onOpenStockPanel }: ReportListProps) {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -18,8 +20,10 @@ export default function ReportList({ onDataChange }: ReportListProps) {
   const [selectedReportId, setSelectedReportId] = useState<string>('');
   const [activeTab, setActiveTab] = useState('content');
   const [fetching, setFetching] = useState(false);
-  const [selectedStock, setSelectedStock] = useState<any>(null);
-  const [showStockPanel, setShowStockPanel] = useState(false);
+  const [stockQuote, setStockQuote] = useState<StockQuote | null>(null);
+  const [stockFinancial, setStockFinancial] = useState<StockFinancial | null>(null);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
 
   const fetchReports = async (search = '') => {
     setLoading(true);
@@ -99,6 +103,42 @@ export default function ReportList({ onDataChange }: ReportListProps) {
   });
 
   const selectedReport = reports.find(r => r.id === selectedReportId) || filteredReports[0];
+
+  // 当选中研报变化时，加载对应股票数据
+  const loadStockData = useCallback(async (code: string) => {
+    if (!code) {
+      setStockQuote(null);
+      setStockFinancial(null);
+      return;
+    }
+    setStockLoading(true);
+    try {
+      const [quote, financial, fullData] = await Promise.all([
+        stockApi.getQuote(code),
+        stockApi.getFinancial(code),
+        stockApi.getFullData(code).catch(() => null),
+      ]);
+      setStockQuote(quote);
+      setStockFinancial(financial);
+      setStockHistory(fullData?.history || []);
+    } catch {
+      // 数据加载失败，清空
+      setStockQuote(null);
+      setStockFinancial(null);
+      setStockHistory([]);
+    } finally {
+      setStockLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedReport?.company_code) {
+      loadStockData(selectedReport.company_code);
+    } else {
+      setStockQuote(null);
+      setStockFinancial(null);
+    }
+  }, [selectedReport?.id, selectedReport?.company_code, loadStockData]);
 
   const getStatusChipClass = (status: string) => {
     return { completed: 'completed', pending: 'pending', parsing: 'parsing', failed: 'failed' }[status] || 'pending';
@@ -198,11 +238,18 @@ export default function ReportList({ onDataChange }: ReportListProps) {
 
     const tabs = [
       { key: 'content', label: '研报内容' },
+      { key: 'financials', label: '财务指标' },
       { key: 'summary', label: '研报总结' },
       { key: 'abstract', label: '关键摘要' },
-      { key: 'notes', label: '批注' },
       { key: 'meta', label: '元数据' },
     ];
+
+    const investRating = r.investment_rating;
+    const profitability = r.profitability;
+    const growth = r.growth;
+    const valuation = r.valuation;
+    const solvency = r.solvency;
+    const cashflowData = r.cashflow;
 
     const isAuto = /^[0-9a-f]{8}-/.test(r.id);
 
@@ -234,11 +281,18 @@ export default function ReportList({ onDataChange }: ReportListProps) {
               </div>
             </div>
             <div className="meta-box">
-              <div className="meta-label">报告日期 / 文件</div>
-              <div className="meta-value">{r.report_date || '-'}</div>
-              <div className="report-desc">{(r.file_type || '').toUpperCase()} · {r.file_size ? `${(r.file_size / 1024 / 1024).toFixed(2)} MB` : '-'}</div>
+              <div className="meta-label">投资建议</div>
+              <div className="meta-value">{investRating?.recommendation || r.rating || '-'}</div>
+              <div className="report-desc">{investRating?.change || '-'} · {investRating?.time_horizon || '-'}</div>
             </div>
           </div>
+          {/* 下载/预览操作 */}
+          {r.filename && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <a href={reportApi.getDownloadUrl(r.id)} target="_blank" rel="noopener noreferrer" className="btn secondary" style={{ fontSize: 12, padding: '4px 12px', textDecoration: 'none' }}>下载PDF</a>
+              <a href={reportApi.getPreviewUrl(r.id)} target="_blank" rel="noopener noreferrer" className="btn secondary" style={{ fontSize: 12, padding: '4px 12px', textDecoration: 'none' }}>在线预览</a>
+            </div>
+          )}
         </div>
 
         <div className="detail-tabs">
@@ -274,6 +328,84 @@ export default function ReportList({ onDataChange }: ReportListProps) {
           </div>
         </div>
 
+        {/* 财务指标 Tab */}
+        <div className="tab-panel" style={{ display: activeTab === 'financials' ? 'block' : 'none' }}>
+          {/* 盈利能力 */}
+          {profitability && Object.keys(profitability).length > 0 && (
+            <div className="section-block">
+              <div className="section-kicker">盈利能力</div>
+              <div className="forecast-grid">
+                <div className="forecast-box"><div className="meta-label">营业收入</div><div className="forecast-value">{profitability.revenue != null ? `${formatNumber(profitability.revenue)} 亿` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">净利润</div><div className="forecast-value">{profitability.net_profit != null ? `${formatNumber(profitability.net_profit)} 亿` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">毛利率</div><div className="forecast-value">{profitability.gross_margin != null ? `${formatNumber(profitability.gross_margin)}%` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">净利率</div><div className="forecast-value">{profitability.net_margin != null ? `${formatNumber(profitability.net_margin)}%` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">ROE</div><div className="forecast-value">{profitability.roe != null ? `${formatNumber(profitability.roe)}%` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">ROA</div><div className="forecast-value">{profitability.roa != null ? `${formatNumber(profitability.roa)}%` : '-'}</div></div>
+              </div>
+            </div>
+          )}
+          {/* 成长性 */}
+          {growth && Object.keys(growth).length > 0 && (
+            <div className="section-block">
+              <div className="section-kicker">成长性</div>
+              <div className="forecast-grid">
+                <div className="forecast-box"><div className="meta-label">营收增速</div><div className="forecast-value">{growth.revenue_growth != null ? `${formatNumber(growth.revenue_growth)}%` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">利润增速</div><div className="forecast-value">{growth.profit_growth != null ? `${formatNumber(growth.profit_growth)}%` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">归母净利润增速</div><div className="forecast-value">{growth.net_profit_growth != null ? `${formatNumber(growth.net_profit_growth)}%` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">3年CAGR</div><div className="forecast-value">{growth.cagr_3y != null ? `${formatNumber(growth.cagr_3y)}%` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">5年CAGR</div><div className="forecast-value">{growth.cagr_5y != null ? `${formatNumber(growth.cagr_5y)}%` : '-'}</div></div>
+              </div>
+            </div>
+          )}
+          {/* 估值 */}
+          {valuation && Object.keys(valuation).length > 0 && (
+            <div className="section-block">
+              <div className="section-kicker">估值指标</div>
+              <div className="forecast-grid">
+                <div className="forecast-box"><div className="meta-label">PE-TTM</div><div className="forecast-value">{valuation.pe_ttm != null ? formatNumber(valuation.pe_ttm) : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">PE(2024E)</div><div className="forecast-value">{valuation.pe_2024 != null ? formatNumber(valuation.pe_2024) : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">PE(2025E)</div><div className="forecast-value">{valuation.pe_2025 != null ? formatNumber(valuation.pe_2025) : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">PB</div><div className="forecast-value">{valuation.pb != null ? formatNumber(valuation.pb) : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">PEG</div><div className="forecast-value">{valuation.peg != null ? formatNumber(valuation.peg) : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">EV/EBITDA</div><div className="forecast-value">{valuation.ev_ebitda != null ? formatNumber(valuation.ev_ebitda) : '-'}</div></div>
+              </div>
+            </div>
+          )}
+          {/* 偿债能力 */}
+          {solvency && Object.keys(solvency).length > 0 && (
+            <div className="section-block">
+              <div className="section-kicker">偿债能力</div>
+              <div className="forecast-grid">
+                <div className="forecast-box"><div className="meta-label">资产负债率</div><div className="forecast-value">{solvency.debt_to_asset != null ? `${formatNumber(solvency.debt_to_asset)}%` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">流动比率</div><div className="forecast-value">{solvency.current_ratio != null ? formatNumber(solvency.current_ratio) : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">速动比率</div><div className="forecast-value">{solvency.quick_ratio != null ? formatNumber(solvency.quick_ratio) : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">利息保障倍数</div><div className="forecast-value">{solvency.interest_coverage != null ? formatNumber(solvency.interest_coverage) : '-'}</div></div>
+              </div>
+            </div>
+          )}
+          {/* 现金流 */}
+          {cashflowData && Object.keys(cashflowData).length > 0 && (
+            <div className="section-block">
+              <div className="section-kicker">现金流</div>
+              <div className="forecast-grid">
+                <div className="forecast-box"><div className="meta-label">经营性现金流</div><div className="forecast-value">{cashflowData.operating_cashflow != null ? `${formatNumber(cashflowData.operating_cashflow)} 亿` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">自由现金流</div><div className="forecast-value">{cashflowData.free_cashflow != null ? `${formatNumber(cashflowData.free_cashflow)} 亿` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">每股现金流</div><div className="forecast-value">{cashflowData.cashflow_per_share != null ? `${formatNumber(cashflowData.cashflow_per_share, 2)} 元` : '-'}</div></div>
+                <div className="forecast-box"><div className="meta-label">现金流利润率</div><div className="forecast-value">{cashflowData.operating_cashflow_margin != null ? `${formatNumber(cashflowData.operating_cashflow_margin)}%` : '-'}</div></div>
+              </div>
+            </div>
+          )}
+          {/* 无数据时的提示 */}
+          {!profitability && !growth && !valuation && !solvency && !cashflowData && (
+            <div className="empty-state" style={{ minHeight: 200 }}>
+              <div>
+                <h3>暂无财务指标数据</h3>
+                <p className="report-desc">该研报未解析出多维度财务指标，请尝试重新解析。</p>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="tab-panel" style={{ display: activeTab === 'summary' ? 'block' : 'none' }}>
           <div className="section-block">
             <h3 className="section-title">核心观点摘要</h3>
@@ -299,15 +431,6 @@ export default function ReportList({ onDataChange }: ReportListProps) {
           </div>
         </div>
 
-        <div className="tab-panel" style={{ display: activeTab === 'notes' ? 'block' : 'none' }}>
-          <div className="section-block">
-            <div className="info-box">
-              <div className="section-kicker">批注占位</div>
-              <p className="section-copy">这里预留给研究员手工标注、二次摘要、风险提示升级与路演纪要补充。</p>
-            </div>
-          </div>
-        </div>
-
         <div className="tab-panel" style={{ display: activeTab === 'meta' ? 'block' : 'none' }}>
           <div className="forecast-grid">
             <div className="info-box"><div className="meta-label">文件路径</div><div className="section-copy">{r.file_path || '-'}</div></div>
@@ -327,24 +450,38 @@ export default function ReportList({ onDataChange }: ReportListProps) {
     if (!selectedReport) return <div className="empty-state"><p>选择研报查看股票数据</p></div>;
     const r = selectedReport;
     const upside = calcUpside(r);
-    const seed = (r.id || '').split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0);
-    const pe = +(12 + (seed % 220) / 10).toFixed(1);
-    const pb = +(1.1 + (seed % 25) / 10).toFixed(1);
-    const marketCap = Math.round((r.current_price || 100) * ((seed % 60) + 40));
-    const turnover = ((seed % 35) + 18) / 10;
+
+    if (stockLoading) {
+      return <div className="empty-state"><Spin /><p style={{ marginTop: 12 }}>加载股票数据...</p></div>;
+    }
+
+    const q = stockQuote;
+    const f = stockFinancial;
 
     return (
       <div className="side-stack" style={{ height: '100%', overflow: 'auto' }}>
         <div className="brief-box">
           <div className="section-kicker">标的概览</div>
-          <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>{r.company} · {r.company_code}</h4>
-          <p className="section-copy">{(r as any).industry || '-'}行业 · {r.rating}评级</p>
+          <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>{q?.name || r.company} · {q?.code || r.company_code}</h4>
+          <p className="section-copy">{q?.industry || '-'}行业 · {r.rating}评级</p>
         </div>
 
         <div className="stock-overview">
           <div className="stock-kpi">
             <span className="report-desc">现价</span>
-            <strong>¥{formatNumber(r.current_price)}</strong>
+            <strong style={{ color: q && q.change_percent >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              ¥{q ? formatNumber(q.current_price) : formatNumber(r.current_price)}
+            </strong>
+          </div>
+          <div className="stock-kpi">
+            <span className="report-desc">涨跌幅</span>
+            <strong style={{ color: q && q.change_percent >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {q ? `${q.change_percent >= 0 ? '+' : ''}${formatNumber(q.change_percent)}%` : '-'}
+            </strong>
+          </div>
+          <div className="stock-kpi">
+            <span className="report-desc">总市值</span>
+            <strong>{q ? `${formatNumber(q.market_cap)} 亿` : '-'}</strong>
           </div>
           <div className="stock-kpi">
             <span className="report-desc">目标涨幅</span>
@@ -352,39 +489,66 @@ export default function ReportList({ onDataChange }: ReportListProps) {
               {upside !== null ? `${upside.toFixed(1)}%` : '-'}
             </strong>
           </div>
-          <div className="stock-kpi">
-            <span className="report-desc">总市值</span>
-            <strong>{marketCap} 亿</strong>
-          </div>
-          <div className="stock-kpi">
-            <span className="report-desc">换手率</span>
-            <strong>{turnover.toFixed(1)}%</strong>
-          </div>
         </div>
 
-        <div className="chart-card">
-          <div className="chart-head">
-            <h4>近12期价格走势</h4>
+        {/* 行情详情 */}
+        {q && (
+          <div className="stock-overview">
+            <div className="stock-kpi">
+              <span className="report-desc">开盘价</span>
+              <strong>¥{formatNumber(q.open)}</strong>
+            </div>
+            <div className="stock-kpi">
+              <span className="report-desc">昨收</span>
+              <strong>¥{formatNumber(q.prev_close)}</strong>
+            </div>
+            <div className="stock-kpi">
+              <span className="report-desc">最高</span>
+              <strong>¥{formatNumber(q.high)}</strong>
+            </div>
+            <div className="stock-kpi">
+              <span className="report-desc">最低</span>
+              <strong>¥{formatNumber(q.low)}</strong>
+            </div>
           </div>
-          <div dangerouslySetInnerHTML={{ __html: buildLineChart(r) }} />
+        )}
+
+        {/* 成交数据 */}
+        {q && (
+          <div className="stock-overview">
+            <div className="stock-kpi">
+              <span className="report-desc">成交量</span>
+              <strong>{q.volume ? `${(q.volume / 10000).toFixed(1)}万手` : '-'}</strong>
+            </div>
+            <div className="stock-kpi">
+              <span className="report-desc">成交额</span>
+              <strong>{q.turnover ? `${formatNumber(q.turnover)}万` : '-'}</strong>
+            </div>
+            <div className="stock-kpi">
+              <span className="report-desc">换手率</span>
+              <strong>{q.turnover_rate != null ? `${formatNumber(q.turnover_rate)}%` : '-'}</strong>
+            </div>
+            <div className="stock-kpi">
+              <span className="report-desc">股息率</span>
+              <strong>{q.dividend_yield != null ? `${formatNumber(q.dividend_yield)}%` : '-'}</strong>
+            </div>
+          </div>
+        )}
+
+        {/* K线走势 */}
+        <div style={{ marginTop: 8 }}>
+          <CandlestickChart data={stockHistory} />
         </div>
 
-        <div className="chart-card">
-          <div className="chart-head">
-            <h4>成交热度</h4>
-            <span>单位：亿股</span>
-          </div>
-          <div dangerouslySetInnerHTML={{ __html: buildBarChart(r) }} />
-        </div>
-
+        {/* 估值指标 */}
         <div className="stock-overview">
           <div className="stock-kpi">
             <span className="report-desc">PE(TTM)</span>
-            <strong>{pe}x</strong>
+            <strong>{q?.pe_ratio != null ? `${formatNumber(q.pe_ratio)}x` : '-'}</strong>
           </div>
           <div className="stock-kpi">
             <span className="report-desc">PB(MRQ)</span>
-            <strong>{pb}x</strong>
+            <strong>{q?.pb_ratio != null ? `${formatNumber(q.pb_ratio)}x` : '-'}</strong>
           </div>
           <div className="stock-kpi">
             <span className="report-desc">一致预期</span>
@@ -392,9 +556,61 @@ export default function ReportList({ onDataChange }: ReportListProps) {
           </div>
           <div className="stock-kpi">
             <span className="report-desc">行业</span>
-            <strong>{(r as any).industry || '-'}</strong>
+            <strong>{q?.industry || '-'}</strong>
           </div>
         </div>
+
+        {/* 财务指标 */}
+        {f && (
+          <div style={{ marginTop: 8 }}>
+            <div className="brief-box">
+              <div className="section-kicker">核心财务指标</div>
+              <div className="stock-overview" style={{ marginTop: 8 }}>
+                <div className="stock-kpi">
+                  <span className="report-desc">ROE</span>
+                  <strong>{formatNumber(f.roe)}%</strong>
+                </div>
+                <div className="stock-kpi">
+                  <span className="report-desc">毛利率</span>
+                  <strong>{formatNumber(f.gross_margin)}%</strong>
+                </div>
+                <div className="stock-kpi">
+                  <span className="report-desc">净利率</span>
+                  <strong>{formatNumber(f.net_margin)}%</strong>
+                </div>
+                <div className="stock-kpi">
+                  <span className="report-desc">资产负债率</span>
+                  <strong>{formatNumber(f.debt_ratio)}%</strong>
+                </div>
+              </div>
+              <div className="stock-overview" style={{ marginTop: 4 }}>
+                <div className="stock-kpi">
+                  <span className="report-desc">营收增长</span>
+                  <strong style={{ color: f.revenue_growth >= 0 ? 'var(--green)' : 'var(--red)' }}>{f.revenue_growth >= 0 ? '+' : ''}{formatNumber(f.revenue_growth)}%</strong>
+                </div>
+                <div className="stock-kpi">
+                  <span className="report-desc">利润增长</span>
+                  <strong style={{ color: f.profit_growth >= 0 ? 'var(--green)' : 'var(--red)' }}>{f.profit_growth >= 0 ? '+' : ''}{formatNumber(f.profit_growth)}%</strong>
+                </div>
+                <div className="stock-kpi">
+                  <span className="report-desc">EPS</span>
+                  <strong>{formatNumber(f.eps, 2)}</strong>
+                </div>
+                <div className="stock-kpi">
+                  <span className="report-desc">每股净资产</span>
+                  <strong>{formatNumber(f.bps)}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 无数据提示 */}
+        {!q && !f && !stockLoading && (
+          <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-faint)', fontSize: 12 }}>
+            未获取到股票数据，请确认股票代码是否正确
+          </div>
+        )}
       </div>
     );
   };
@@ -542,6 +758,15 @@ export default function ReportList({ onDataChange }: ReportListProps) {
               <h3 className="panel-title">股票数据</h3>
               <div className="panel-subtitle">跟随当前研报切换，展示行情概览</div>
             </div>
+            {selectedReport?.company_code && (
+              <button
+                className="btn secondary"
+                style={{ fontSize: 11, padding: '4px 10px', height: 'auto' }}
+                onClick={() => onOpenStockPanel?.(selectedReport.company_code)}
+              >
+                查看完整数据
+              </button>
+            )}
           </div>
           <div style={{ height: 'calc(100% - 72px)', overflow: 'auto' }}>
             {renderStockSidebar()}

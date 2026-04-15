@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Card, Tag, Row, Col, Statistic, Spin, Empty, Tabs, Typography, Divider, message, Alert } from 'antd';
+import { Card, Tag, Row, Col, Statistic, Spin, Empty, Typography, Divider, message, Alert } from 'antd';
 import { 
   StockOutlined, RiseOutlined, FallOutlined, 
-  BarChartOutlined, PieChartOutlined, LineChartOutlined,
-  ReloadOutlined, InfoCircleOutlined, TeamOutlined
+  BarChartOutlined, LineChartOutlined,
+  ReloadOutlined, InfoCircleOutlined, TeamOutlined,
+  DollarOutlined
 } from '@ant-design/icons';
 import { stockApi } from '../services/api';
 import type { StockFullData } from '../types';
@@ -14,6 +15,14 @@ import {
 } from './StockCharts';
 
 const { Text, Paragraph } = Typography;
+
+const TAB_LIST = [
+  { key: 'overview', icon: <BarChartOutlined />, label: '行情图表' },
+  { key: 'financial', icon: <DollarOutlined />, label: '财务分析' },
+  { key: 'holders', icon: <TeamOutlined />, label: '股东结构' },
+  { key: 'peers', icon: <LineChartOutlined />, label: '同业对比' },
+  { key: 'company', icon: <InfoCircleOutlined />, label: '公司资料' },
+];
 
 interface StockInfoCardProps {
   stockCode: string;
@@ -213,17 +222,42 @@ export default function StockInfoCard({ stockCode }: StockInfoCardProps) {
       </Card>
 
       {/* 图表标签页 */}
-      <Tabs 
-        activeKey={activeTab} 
-        onChange={setActiveTab}
-        type="card"
-        size="small"
-        style={{ marginBottom: 0 }}
-      >
-        <Tabs.TabPane 
-          tab={<span><BarChartOutlined />行情图表</span>} 
-          key="overview"
-        >
+      <div style={{
+        display: 'flex',
+        gap: 4,
+        padding: '10px 4px 0',
+        overflowX: 'auto',
+        borderBottom: `1px solid ${colors.border}`,
+        background: 'rgba(255,255,255,0.74)',
+      }}>
+        {TAB_LIST.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '8px 12px',
+              borderRadius: '10px 10px 0 0',
+              border: activeTab === tab.key ? `1px solid ${colors.border}` : '1px solid transparent',
+              borderBottom: activeTab === tab.key ? '1px solid #fff' : '1px solid transparent',
+              background: activeTab === tab.key ? 'linear-gradient(180deg, #ffffff, #f6fbff)' : 'none',
+              color: activeTab === tab.key ? colors.primary : colors.textMuted,
+              fontWeight: activeTab === tab.key ? 700 : 500,
+              fontSize: 13,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: '0.2s ease',
+            }}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'overview' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {/* K线图 */}
             <CandlestickChart data={data.history || []} />
@@ -249,12 +283,9 @@ export default function StockInfoCard({ stockCode }: StockInfoCardProps) {
               </Row>
             </Card>
           </div>
-        </Tabs.TabPane>
+      )}
 
-        <Tabs.TabPane 
-          tab={<span><PieChartOutlined />财务分析</span>} 
-          key="financial"
-        >
+      {activeTab === 'financial' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {/* 财务雷达图 */}
             <FinancialRadar data={financial || {} as any} />
@@ -289,12 +320,9 @@ export default function StockInfoCard({ stockCode }: StockInfoCardProps) {
               </Row>
             </Card>
           </div>
-        </Tabs.TabPane>
+      )}
 
-        <Tabs.TabPane 
-          tab={<span><TeamOutlined />股东结构</span>} 
-          key="holders"
-        >
+      {activeTab === 'holders' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {/* 股东结构饼图 */}
             <HolderStructureChart data={data.holders || { institutional_holdings: 0, northbound_holdings: 0, fund_holdings: 0, insurance_holdings: 0, qfii_holdings: 0 }} />
@@ -311,12 +339,9 @@ export default function StockInfoCard({ stockCode }: StockInfoCardProps) {
               </Row>
             </Card>
           </div>
-        </Tabs.TabPane>
+      )}
 
-        <Tabs.TabPane 
-          tab={<span><LineChartOutlined />同业对比</span>} 
-          key="peers"
-        >
+      {activeTab === 'peers' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {/* 同业对比图 */}
             <PeerComparisonChart data={data.peer_comparison || []} currentStock={data.basic.name} />
@@ -328,17 +353,18 @@ export default function StockInfoCard({ stockCode }: StockInfoCardProps) {
                   display: 'flex', 
                   justifyContent: 'space-between', 
                   alignItems: 'center',
-                  padding: '12px 0',
+                  padding: '14px 0',
                   borderBottom: index < (data.peer_comparison?.length || 0) - 1 ? `1px solid ${colors.border}` : 'none'
                 }}>
                   <div>
-                    <div style={{ fontWeight: 500 }}>{peer.name}</div>
-                    <div style={{ fontSize: 12, color: colors.textMuted }}>{peer.code}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{peer.name}</div>
+                    <div style={{ fontSize: 12, color: colors.textMuted, fontStyle: 'italic' }}>{peer.code}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>¥{formatNumber(peer.current_price)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, fontFamily: 'monospace' }}>¥{formatNumber(peer.current_price)}</div>
                     <div style={{ 
-                      fontSize: 12, 
+                      fontSize: 13, 
+                      fontWeight: 500,
                       color: peer.change_percent >= 0 ? colors.danger : colors.success 
                     }}>
                       {peer.change_percent >= 0 ? '+' : ''}{formatNumber(peer.change_percent)}%
@@ -348,12 +374,9 @@ export default function StockInfoCard({ stockCode }: StockInfoCardProps) {
               ))}
             </Card>
           </div>
-        </Tabs.TabPane>
+      )}
 
-        <Tabs.TabPane 
-          tab={<span><InfoCircleOutlined />公司资料</span>} 
-          key="company"
-        >
+      {activeTab === 'company' && (
           <Card style={{ borderRadius: borderRadius.md }}>
             <div style={{ marginBottom: '16px' }}>
               <Text strong style={{ fontSize: 16 }}>{company?.full_name}</Text>
@@ -400,8 +423,7 @@ export default function StockInfoCard({ stockCode }: StockInfoCardProps) {
               </div>
             </div>
           </Card>
-        </Tabs.TabPane>
-      </Tabs>
+      )}
     </div>
   );
 }

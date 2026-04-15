@@ -69,7 +69,7 @@ export const reportApi = {
     return request<Report>(`/reports/${id}/reparse`, { method: 'POST' });
   },
 
-  // 抓取研报
+  // 拓取研报
   fetch: async (count: number = 5, useAi: boolean = false, company?: string): Promise<{ fetched: number; reports: Report[] }> => {
     return request<{ fetched: number; reports: Report[] }>('/reports/fetch', {
       method: 'POST',
@@ -78,6 +78,16 @@ export const reportApi = {
       },
       body: JSON.stringify({ count, use_ai: useAi, company }),
     });
+  },
+
+  // 下载研报PDF
+  getDownloadUrl: (id: string): string => {
+    return `${API_BASE}/reports/${id}/download`;
+  },
+
+  // 在线预览研报
+  getPreviewUrl: (id: string): string => {
+    return `${API_BASE}/reports/${id}/preview`;
   },
 };
 

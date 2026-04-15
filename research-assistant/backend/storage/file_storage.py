@@ -30,6 +30,8 @@ class FileStorage:
         ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else ''
         unique_id = str(uuid.uuid4())[:8]
         safe_name = secure_filename(original_filename.rsplit('.', 1)[0])
+        if not safe_name:
+            safe_name = 'upload'
         return f"{safe_name}_{unique_id}.{ext}"
     
     def save(self, file_obj, original_filename: str) -> dict:

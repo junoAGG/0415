@@ -34,26 +34,29 @@ export function CandlestickChart({ data }: CandlestickChartProps) {
   }));
 
   return (
-    <Card title="K线走势" size="small" style={{ borderRadius: borderRadius.md }}>
-      <ResponsiveContainer width="100%" height={250}>
-        <ComposedChart data={chartData}>
+    <Card title="K线走势" size="small" style={{ borderRadius: borderRadius.md }} bodyStyle={{ padding: '6px 2px 2px' }}>
+      <ResponsiveContainer width="100%" height={170}>
+        <ComposedChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis 
             dataKey="date" 
-            tick={{ fontSize: 10 }}
+            tick={{ fontSize: 9 }}
             interval="preserveStartEnd"
+            tickMargin={2}
           />
           <YAxis 
             yAxisId="price"
             domain={['auto', 'auto']}
-            tick={{ fontSize: 10 }}
-            tickFormatter={(value) => `¥${value}`}
+            tick={{ fontSize: 8 }}
+            width={32}
+            tickFormatter={(v) => String(v)}
           />
           <YAxis 
             yAxisId="volume"
             orientation="right"
-            tick={{ fontSize: 10 }}
-            tickFormatter={(value) => `${value}万`}
+            tick={{ fontSize: 8 }}
+            width={28}
+            tickFormatter={(v) => `${v.toFixed(0)}`}
           />
           <Tooltip 
             formatter={(value: any, name: string) => {
@@ -67,7 +70,7 @@ export function CandlestickChart({ data }: CandlestickChartProps) {
             yAxisId="volume"
             dataKey="volume" 
             fill={colors.primary + '40'}
-            barSize={8}
+            barSize={6}
           />
           <Line 
             yAxisId="price"
@@ -107,7 +110,7 @@ export function VolumeChart({ data }: VolumeChartProps) {
   return (
     <Card title="成交量趋势" size="small" style={{ borderRadius: borderRadius.md }}>
       <ResponsiveContainer width="100%" height={200}>
-        <AreaChart data={chartData}>
+        <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
           <defs>
             <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor={colors.accent} stopOpacity={0.8}/>
@@ -115,8 +118,8 @@ export function VolumeChart({ data }: VolumeChartProps) {
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}万`} />
+          <XAxis dataKey="date" tick={{ fontSize: 10 }} tickMargin={4} />
+          <YAxis tick={{ fontSize: 9 }} width={45} tickFormatter={(v) => `${v.toFixed(0)}万`} />
           <Tooltip 
             formatter={(value: any) => [`${Number(value).toFixed(2)}万手`, '成交量']}
             labelStyle={{ fontSize: 12 }}
@@ -203,27 +206,52 @@ export function PeerComparisonChart({ data, currentStock }: PeerComparisonProps)
     isCurrent: peer.name === currentStock,
   }));
 
+  const barHeight = Math.max(180, chartData.length * 52);
+
+  // 自定义Tooltip，展示公司名+ROE
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    const item = payload[0]?.payload;
+    return (
+      <div style={{
+        background: '#fff', border: `1px solid ${colors.border}`,
+        borderRadius: 8, padding: '10px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+      }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{label}</div>
+        <div style={{ color: colors.accent, fontSize: 12 }}>ROE : {item?.roe?.toFixed(2)}</div>
+        {payload.map((p: any, i: number) => (
+          <div key={i} style={{ fontSize: 12, color: colors.textPrimary, marginTop: 2 }}>
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: p.color, marginRight: 6 }} />
+            {p.name} : {Number(p.value).toFixed(2)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <Card title="同业估值对比" size="small" style={{ borderRadius: borderRadius.md }}>
-      <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={chartData} layout="vertical">
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis type="number" tick={{ fontSize: 10 }} />
-          <YAxis 
-            dataKey="name" 
-            type="category" 
-            tick={{ fontSize: 10 }}
-            width={70}
+      <ResponsiveContainer width="100%" height={barHeight}>
+        <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+          <XAxis type="number" tick={{ fontSize: 11, fill: colors.textMuted }} axisLine={{ stroke: colors.border }} />
+          <YAxis
+            dataKey="name"
+            type="category"
+            tick={{ fontSize: 12, fill: colors.textPrimary, fontWeight: 500 }}
+            width={68}
+            axisLine={false}
+            tickLine={false}
           />
-          <Tooltip 
-            formatter={(value: any, name: string) => {
-              const label = name === 'pe' ? '市盈率' : name === 'pb' ? '市净率' : 'ROE';
-              return [Number(value).toFixed(2), label];
-            }}
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+          <Legend
+            verticalAlign="bottom"
+            iconType="square"
+            iconSize={10}
+            wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
           />
-          <Legend />
-          <Bar dataKey="pe" name="市盈率" fill={colors.primary} radius={[0, 4, 4, 0]} barSize={12} />
-          <Bar dataKey="pb" name="市净率" fill={colors.accent} radius={[0, 4, 4, 0]} barSize={12} />
+          <Bar dataKey="pb" name="市净率" fill={colors.accent} radius={[0, 4, 4, 0]} barSize={14} />
+          <Bar dataKey="pe" name="市盈率" fill={colors.primary} radius={[0, 4, 4, 0]} barSize={14} />
         </BarChart>
       </ResponsiveContainer>
     </Card>

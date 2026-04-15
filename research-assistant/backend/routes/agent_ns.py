@@ -4,12 +4,14 @@
 """
 import os
 import uuid
-from flask import request, current_app, send_file, send_from_directory
+import json
+from flask import request, current_app, send_file, send_from_directory, Response, stream_with_context
 from flask_restx import Namespace, Resource, fields, reqparse
 from werkzeug.utils import secure_filename
 
 from storage.report_storage import ReportStorage
 from storage.file_storage import FileStorage
+from storage.chat_storage import ChatStorage
 from services.parser import ReportParser
 from services.ai_service import ai_service
 from services.report_fetcher import report_fetcher
@@ -22,6 +24,7 @@ agent_ns = Namespace('agent', description='研报管理相关接口')
 # 初始化存储
 report_storage = ReportStorage()
 file_storage = FileStorage()
+chat_storage = ChatStorage()
 parser = ReportParser()
 
 
@@ -204,7 +207,13 @@ class ReportUpload(Resource):
         failed = []
         
         for file_obj in files:
-            original_filename = secure_filename(file_obj.filename)
+            # 保留原始文件名（含中文）用于标题提取和类型检查
+            # secure_filename 会过滤中文字符导致文件名为空，上传失败
+            raw_name = file_obj.filename or ''
+            # 仅去除路径部分，防止路径穿越
+            original_filename = raw_name.replace('\\', '/').rsplit('/', 1)[-1].strip()
+            if not original_filename:
+                original_filename = f'upload_{uuid.uuid4().hex[:8]}.pdf'
             
             # 保存文件
             result = file_storage.save(file_obj, original_filename)
@@ -763,6 +772,234 @@ class AnalysisQuery(Resource):
             'code': 0,
             'message': 'success',
             'data': result,
+            'trace_id': generate_trace_id()
+        }
+
+
+# ============ 流式问答请求模型 ============
+
+stream_request_model = agent_ns.model('StreamRequest', {
+    'question': fields.String(required=True, description='问题'),
+    'report_ids': fields.List(fields.String, description='参考研报ID列表'),
+    'session_id': fields.String(description='会话ID'),
+})
+
+
+@agent_ns.route('/analysis/query-stream')
+class AnalysisQueryStream(Resource):
+    """AI流式问答接口（SSE）"""
+
+    @agent_ns.doc('ai_query_stream')
+    @agent_ns.expect(stream_request_model)
+    def post(self):
+        """
+        流式AI智能问答
+
+        基于研报内容进行流式问答，通过SSE逐步推送回答内容
+        """
+        data = request.get_json()
+        question = data.get('question', '')
+        report_ids = data.get('report_ids', [])
+        session_id = data.get('session_id', '')
+
+        if not question:
+            return {'code': 'EMPTY_QUESTION', 'message': '问题不能为空', 'data': None, 'trace_id': generate_trace_id()}, 400
+
+        # 会话管理：自动创建或复用会话
+        if session_id:
+            session = chat_storage.get_session(session_id)
+            if not session:
+                session_id = ''
+        if not session_id:
+            session = chat_storage.create_session(
+                title=question[:30],
+                report_ids=report_ids or []
+            )
+            session_id = session['id']
+
+        # 保存用户消息
+        chat_storage.add_message(session_id, 'user', question)
+
+        # 获取参考研报
+        reports = []
+        if report_ids:
+            for rid in report_ids:
+                report = report_storage.get(rid)
+                if report:
+                    reports.append(report)
+        else:
+            all_reports = report_storage.list(page_size=100)
+            reports = [r for r in all_reports['items'] if r['status'] == 'completed'][:5]
+
+        # 构建问答提示词
+        prompt = _build_query_prompt(question, reports)
+
+        # 构建来源信息
+        sources = [
+            {
+                'report_id': r['id'],
+                'report_title': r['title'],
+                'excerpt': (r.get('core_views', '') or '-')[:100] + '...'
+            }
+            for r in reports[:3]
+        ]
+
+        current_session_id = session_id
+
+        def generate():
+            full_answer = []
+            try:
+                # 第一条就返回 session_id
+                payload = json.dumps({'content': '', 'done': False, 'session_id': current_session_id}, ensure_ascii=False)
+                yield f'data: {payload}\n\n'
+
+                for chunk in ai_service.stream_generate_text(prompt, max_tokens=2500):
+                    if chunk.startswith('[ERROR]'):
+                        payload = json.dumps({'content': '', 'done': False, 'error': chunk[8:]}, ensure_ascii=False)
+                        yield f'data: {payload}\n\n'
+                        return
+                    full_answer.append(chunk)
+                    payload = json.dumps({'content': chunk, 'done': False}, ensure_ascii=False)
+                    yield f'data: {payload}\n\n'
+
+                # 保存AI回答到会话
+                answer_text = ''.join(full_answer)
+                chat_storage.add_message(current_session_id, 'assistant', answer_text, sources)
+
+                # 完成
+                payload = json.dumps({'content': '', 'done': True, 'sources': sources, 'session_id': current_session_id}, ensure_ascii=False)
+                yield f'data: {payload}\n\n'
+            except Exception as e:
+                payload = json.dumps({'content': '', 'done': False, 'error': str(e)}, ensure_ascii=False)
+                yield f'data: {payload}\n\n'
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no',
+                'Connection': 'keep-alive',
+            }
+        )
+
+
+# ============ 会话管理 API ============
+
+session_create_model = agent_ns.model('SessionCreate', {
+    'title': fields.String(description='会话标题', example='新对话'),
+    'report_ids': fields.List(fields.String, description='关联研报ID列表'),
+})
+
+session_update_model = agent_ns.model('SessionUpdate', {
+    'title': fields.String(required=True, description='会话标题'),
+})
+
+
+@agent_ns.route('/sessions')
+class SessionList(Resource):
+    """会话列表接口"""
+
+    @agent_ns.doc('list_sessions')
+    @agent_ns.response(200, '查询成功', success_response_model)
+    def get(self):
+        """获取会话列表"""
+        sessions = chat_storage.list_sessions()
+        return {
+            'code': 0,
+            'message': 'success',
+            'data': {'sessions': sessions},
+            'trace_id': generate_trace_id()
+        }
+
+    @agent_ns.doc('create_session')
+    @agent_ns.expect(session_create_model)
+    @agent_ns.response(200, '创建成功', success_response_model)
+    def post(self):
+        """创建新会话"""
+        data = request.get_json() or {}
+        title = data.get('title', '新对话')
+        report_ids = data.get('report_ids', [])
+        session = chat_storage.create_session(title=title, report_ids=report_ids)
+        return {
+            'code': 0,
+            'message': 'success',
+            'data': {'session': session},
+            'trace_id': generate_trace_id()
+        }
+
+
+@agent_ns.route('/sessions/<string:session_id>')
+@agent_ns.param('session_id', '会话ID')
+class SessionDetail(Resource):
+    """会话详情接口"""
+
+    @agent_ns.doc('get_session')
+    @agent_ns.response(200, '查询成功', success_response_model)
+    @agent_ns.response(404, '会话不存在', error_response_model)
+    def get(self, session_id):
+        """获取会话详情"""
+        session = chat_storage.get_session(session_id)
+        if not session:
+            return {'code': 'SESSION_NOT_FOUND', 'message': '会话不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
+        return {
+            'code': 0,
+            'message': 'success',
+            'data': session,
+            'trace_id': generate_trace_id()
+        }
+
+    @agent_ns.doc('update_session')
+    @agent_ns.expect(session_update_model)
+    @agent_ns.response(200, '更新成功', success_response_model)
+    @agent_ns.response(404, '会话不存在', error_response_model)
+    def put(self, session_id):
+        """更新会话标题"""
+        data = request.get_json() or {}
+        title = data.get('title')
+        result = chat_storage.update_session(session_id, title=title)
+        if not result:
+            return {'code': 'SESSION_NOT_FOUND', 'message': '会话不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
+        return {
+            'code': 0,
+            'message': 'success',
+            'data': result,
+            'trace_id': generate_trace_id()
+        }
+
+    @agent_ns.doc('delete_session')
+    @agent_ns.response(200, '删除成功', success_response_model)
+    @agent_ns.response(404, '会话不存在', error_response_model)
+    def delete(self, session_id):
+        """删除会话"""
+        success = chat_storage.delete_session(session_id)
+        if not success:
+            return {'code': 'SESSION_NOT_FOUND', 'message': '会话不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
+        return {
+            'code': 0,
+            'message': '删除成功',
+            'data': None,
+            'trace_id': generate_trace_id()
+        }
+
+
+@agent_ns.route('/sessions/<string:session_id>/messages')
+@agent_ns.param('session_id', '会话ID')
+class SessionMessages(Resource):
+    """会话消息接口"""
+
+    @agent_ns.doc('get_session_messages')
+    @agent_ns.response(200, '查询成功', success_response_model)
+    @agent_ns.response(404, '会话不存在', error_response_model)
+    def get(self, session_id):
+        """获取会话消息历史"""
+        session = chat_storage.get_session(session_id)
+        if not session:
+            return {'code': 'SESSION_NOT_FOUND', 'message': '会话不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
+        return {
+            'code': 0,
+            'message': 'success',
+            'data': {'messages': session.get('messages', [])},
             'trace_id': generate_trace_id()
         }
 

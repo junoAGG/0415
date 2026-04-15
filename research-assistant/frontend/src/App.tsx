@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import ReportList from './pages/ReportList';
 import Analysis from './pages/Analysis';
 import AIStatus from './components/AIStatus';
+import StockPanel from './components/StockPanel';
 import { reportApi } from './services/api';
 import type { Report } from './types';
 import './App.css';
@@ -9,6 +10,13 @@ import './App.css';
 function App() {
   const [currentPage, setCurrentPage] = useState<'reportsPage' | 'analysisPage'>('reportsPage');
   const [reports, setReports] = useState<Report[]>([]);
+  const [stockPanelVisible, setStockPanelVisible] = useState(false);
+  const [stockPanelCode, setStockPanelCode] = useState('');
+
+  const openStockPanel = (code?: string) => {
+    if (code) setStockPanelCode(code);
+    setStockPanelVisible(true);
+  };
 
   // 加载研报用于顶部统计
   const loadReports = async () => {
@@ -46,11 +54,11 @@ function App() {
   const renderContent = () => {
     switch (currentPage) {
       case 'reportsPage':
-        return <ReportList onDataChange={loadReports} />;
+        return <ReportList onDataChange={loadReports} onOpenStockPanel={openStockPanel} />;
       case 'analysisPage':
         return <Analysis />;
       default:
-        return <ReportList onDataChange={loadReports} />;
+        return <ReportList onDataChange={loadReports} onOpenStockPanel={openStockPanel} />;
     }
   };
 
@@ -82,7 +90,19 @@ function App() {
               </button>
             </nav>
           </div>
-          <AIStatus />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              className="nav-tab"
+              onClick={() => setStockPanelVisible(true)}
+              style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+              股票数据
+            </button>
+            <AIStatus />
+          </div>
         </header>
 
         {/* 主内容区 */}
@@ -122,6 +142,13 @@ function App() {
           </div>
         </main>
       </div>
+
+      {/* 股票数据抽屉面板 */}
+      <StockPanel
+        visible={stockPanelVisible}
+        onClose={() => setStockPanelVisible(false)}
+        initialStockCode={stockPanelCode}
+      />
     </div>
   );
 }

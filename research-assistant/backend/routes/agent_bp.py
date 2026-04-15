@@ -79,7 +79,12 @@ def upload_report():
     failed = []
     
     for file_obj in files:
-        original_filename = secure_filename(file_obj.filename)
+        # 保留原始文件名（含中文）用于标题提取和类型检查
+        # secure_filename 会过滤中文字符导致文件名为空，上传失败
+        raw_name = file_obj.filename or ''
+        original_filename = raw_name.replace('\\', '/').rsplit('/', 1)[-1].strip()
+        if not original_filename:
+            original_filename = f'upload_{uuid.uuid4().hex[:8]}.pdf'
         
         # 保存文件
         result = file_storage.save(file_obj, original_filename)

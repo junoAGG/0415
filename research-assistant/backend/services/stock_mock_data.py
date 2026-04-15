@@ -361,26 +361,58 @@ class StockMockDataService:
     def _generate_peer_comparison(self, stock_info: Dict, benchmarks: Dict) -> List[Dict]:
         """生成同业对比数据"""
         peers = []
+        current_code = stock_info.get("code", "")
         industry = stock_info.get("industry", "其他")
+        sector = stock_info.get("sector", "")
+        added_codes = set()
         
-        # 找同行业其他公司
+        # 优先找同 industry 的公司
         for code, info in self.STOCK_POOL.items():
-            if info["industry"] == industry and code != stock_info["code"]:
-                base_price = self._generate_base_price(industry)
-                peers.append({
-                    "code": code,
-                    "name": info["name"],
-                    "current_price": round(base_price * random.uniform(0.9, 1.1), 2),
-                    "change_percent": round(random.uniform(-3, 3), 2),
-                    "pe_ratio": round(random.uniform(*benchmarks["pe_range"]), 2),
-                    "pb_ratio": round(random.uniform(*benchmarks["pb_range"]), 2),
-                    "market_cap": round(random.uniform(100, 20000), 2),
-                    "roe": round(random.uniform(*benchmarks["roe_range"]), 2),
-                })
+            if code != current_code and info["industry"] == industry and code not in added_codes:
+                self._add_peer(peers, code, info, benchmarks)
+                added_codes.add(code)
                 if len(peers) >= 4:
-                    break
+                    return peers
+        
+        # 不足4家时，按同 sector 补充
+        if len(peers) < 4 and sector:
+            for code, info in self.STOCK_POOL.items():
+                if code != current_code and info.get("sector") == sector and code not in added_codes:
+                    peer_industry = info["industry"]
+                    peer_benchmarks = self.INDUSTRY_BENCHMARKS.get(peer_industry, benchmarks)
+                    self._add_peer(peers, code, info, peer_benchmarks)
+                    added_codes.add(code)
+                    if len(peers) >= 4:
+                        return peers
+        
+        # 仍不足，取其他热门公司补充
+        if len(peers) < 4:
+            for code, info in self.STOCK_POOL.items():
+                if code != current_code and code not in added_codes:
+                    peer_industry = info["industry"]
+                    peer_benchmarks = self.INDUSTRY_BENCHMARKS.get(peer_industry, benchmarks)
+                    self._add_peer(peers, code, info, peer_benchmarks)
+                    added_codes.add(code)
+                    if len(peers) >= 4:
+                        break
         
         return peers
+    
+    def _add_peer(self, peers: list, code: str, info: Dict, benchmarks: Dict):
+        """添加一个对标公司到列表"""
+        industry = info["industry"]
+        base_price = self._generate_base_price(industry)
+        peers.append({
+            "code": code,
+            "name": info["name"],
+            "industry": industry,
+            "current_price": round(base_price * random.uniform(0.9, 1.1), 2),
+            "change_percent": round(random.uniform(-3, 3), 2),
+            "pe_ratio": round(random.uniform(*benchmarks["pe_range"]), 2),
+            "pb_ratio": round(random.uniform(*benchmarks["pb_range"]), 2),
+            "market_cap": round(random.uniform(100, 20000), 2),
+            "roe": round(random.uniform(*benchmarks["roe_range"]), 2),
+        })
 
 
 # 全局实例

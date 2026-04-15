@@ -5,6 +5,60 @@ export interface ReportSummary {
   risk_warnings: string;
 }
 
+// 投资评级
+export interface InvestmentRating {
+  recommendation?: string;  // 投资建议
+  change?: string;          // 评级变化
+  time_horizon?: string;    // 投资期限
+}
+
+// 盈利能力
+export interface Profitability {
+  revenue?: number;         // 营业收入(亿元)
+  net_profit?: number;      // 净利润(亿元)
+  gross_margin?: number;    // 毛利率(%)
+  net_margin?: number;      // 净利率(%)
+  roe?: number;             // ROE(%)
+  roa?: number;             // ROA(%)
+  roic?: number;            // ROIC(%)
+}
+
+// 成长性
+export interface Growth {
+  revenue_growth?: number;      // 营收增速(%)
+  profit_growth?: number;       // 净利润增速(%)
+  net_profit_growth?: number;   // 归母净利润增速(%)
+  cagr_3y?: number;             // 3年复合增速(%)
+  cagr_5y?: number;             // 5年复合增速(%)
+}
+
+// 估值
+export interface Valuation {
+  pe_ttm?: number;    // PE-TTM
+  pe_2024?: number;   // 2024年PE
+  pe_2025?: number;   // 2025年PE
+  pb?: number;        // PB
+  ps?: number;        // PS
+  peg?: number;       // PEG
+  ev_ebitda?: number; // EV/EBITDA
+}
+
+// 偿债能力
+export interface Solvency {
+  debt_to_asset?: number;      // 资产负债率(%)
+  current_ratio?: number;      // 流动比率
+  quick_ratio?: number;        // 速动比率
+  interest_coverage?: number;  // 利息保障倍数
+}
+
+// 现金流
+export interface Cashflow {
+  operating_cashflow?: number;        // 经营性现金流(亿元)
+  free_cashflow?: number;             // 自由现金流(亿元)
+  cashflow_per_share?: number;        // 每股现金流(元)
+  operating_cashflow_margin?: number; // 现金流利润率(%)
+}
+
 // 研报类型
 export interface Report {
   id: string;
@@ -30,6 +84,13 @@ export interface Report {
   // 解析后的内容
   content?: string;
   summary?: ReportSummary;
+  // 多维度财务指标
+  investment_rating?: InvestmentRating;
+  profitability?: Profitability;
+  growth?: Growth;
+  valuation?: Valuation;
+  solvency?: Solvency;
+  cashflow?: Cashflow;
 }
 
 // 研报列表响应
