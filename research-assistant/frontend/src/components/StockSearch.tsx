@@ -24,7 +24,10 @@ export default function StockSearch({ onSelect, placeholder = '搜索股票代�
     setLoading(true);
     try {
       const response = await stockApi.search(keyword);
-      const items = response.items || [];
+      // 兼容多种响应格式：response.items 数组或 response 本身为数组
+      const items: Stock[] = Array.isArray(response)
+        ? (response as unknown as Stock[])
+        : (response?.items || []);
       
       const newOptions = items.map(stock => ({
         value: stock.code,

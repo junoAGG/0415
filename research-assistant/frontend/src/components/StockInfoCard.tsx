@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, Tag, Row, Col, Statistic, Spin, Empty, Tabs, Typography, Divider } from 'antd';
+import { Card, Tag, Row, Col, Statistic, Spin, Empty, Tabs, Typography, Divider, message, Alert } from 'antd';
 import { 
   StockOutlined, RiseOutlined, FallOutlined, 
   BarChartOutlined, PieChartOutlined, LineChartOutlined,
@@ -22,6 +22,7 @@ interface StockInfoCardProps {
 export default function StockInfoCard({ stockCode }: StockInfoCardProps) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<StockFullData | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
@@ -32,11 +33,15 @@ export default function StockInfoCard({ stockCode }: StockInfoCardProps) {
 
   const fetchStockData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const fullData = await stockApi.getFullData(stockCode);
       setData(fullData);
-    } catch (error) {
-      console.error('获取股票数据失败:', error);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : '获取股票数据失败';
+      console.error('获取股票数据失败:', err);
+      setError(errorMsg);
+      message.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -85,7 +90,24 @@ export default function StockInfoCard({ stockCode }: StockInfoCardProps) {
   if (!data) {
     return (
       <Card style={{ borderRadius: borderRadius.lg, boxShadow: shadows.card }}>
-        <Empty description="暂无股票数据" />
+        {error ? (
+          <Alert
+            type="error"
+            message="获取失败"
+            description={error}
+            showIcon
+            action={
+              <span
+                style={{ cursor: 'pointer', color: colors.primary }}
+                onClick={fetchStockData}
+              >
+                重试
+              </span>
+            }
+          />
+        ) : (
+          <Empty description="暂无股票数据" />
+        )}
       </Card>
     );
   }
