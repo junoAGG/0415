@@ -3,22 +3,18 @@
 提供Swagger文档支持
 """
 import os
-import re
 import uuid
-import json
-import logging
-from flask import request, current_app, Response
+from flask import request, current_app, send_file, send_from_directory
 from flask_restx import Namespace, Resource, fields, reqparse
 from werkzeug.utils import secure_filename
 
 from storage.report_storage import ReportStorage
 from storage.file_storage import FileStorage
-from storage import chat_storage
 from services.parser import ReportParser
 from services.ai_service import ai_service
 from services.report_fetcher import report_fetcher
-
-logger = logging.getLogger(__name__)
+import os
+import mimetypes
 
 # 创建命名空间
 agent_ns = Namespace('agent', description='研报管理相关接口')
@@ -35,6 +31,60 @@ def generate_trace_id():
 
 
 # ============ API Models (用于Swagger文档) ============
+
+# 投资评级模型
+investment_rating_model = agent_ns.model('InvestmentRating', {
+    'recommendation': fields.String(description='投资建议', example='建议买入', enum=['强烈建议买入', '建议买入', '建议观望', '建议卖出']),
+    'change': fields.String(description='评级变化', example='维持'),
+    'time_horizon': fields.String(description='投资期限', example='12个月'),
+})
+
+# 盈利能力模型
+profitability_model = agent_ns.model('Profitability', {
+    'revenue': fields.Float(description='营业收入(亿元)', example=1000.5),
+    'net_profit': fields.Float(description='净利润(亿元)', example=150.3),
+    'gross_margin': fields.Float(description='毛利率(%)', example=35.5),
+    'net_margin': fields.Float(description='净利率(%)', example=15.0),
+    'roe': fields.Float(description='ROE(%)', example=18.5),
+    'roa': fields.Float(description='ROA(%)', example=10.2),
+    'roic': fields.Float(description='ROIC(%)', example=12.8),
+})
+
+# 成长性模型
+growth_model = agent_ns.model('Growth', {
+    'revenue_growth': fields.Float(description='营收增速(%)', example=25.5),
+    'profit_growth': fields.Float(description='净利润增速(%)', example=30.2),
+    'net_profit_growth': fields.Float(description='归母净利润增速(%)', example=28.5),
+    'cagr_3y': fields.Float(description='3年复合增速(%)', example=20.0),
+    'cagr_5y': fields.Float(description='5年复合增速(%)', example=18.5),
+})
+
+# 估值模型
+valuation_model = agent_ns.model('Valuation', {
+    'pe_ttm': fields.Float(description='PE-TTM', example=25.5),
+    'pe_2024': fields.Float(description='2024年PE', example=22.0),
+    'pe_2025': fields.Float(description='2025年PE', example=18.5),
+    'pb': fields.Float(description='PB', example=3.2),
+    'ps': fields.Float(description='PS', example=5.5),
+    'peg': fields.Float(description='PEG', example=1.2),
+    'ev_ebitda': fields.Float(description='EV/EBITDA', example=15.5),
+})
+
+# 偿债能力模型
+solvency_model = agent_ns.model('Solvency', {
+    'debt_to_asset': fields.Float(description='资产负债率(%)', example=45.5),
+    'current_ratio': fields.Float(description='流动比率', example=1.8),
+    'quick_ratio': fields.Float(description='速动比率', example=1.5),
+    'interest_coverage': fields.Float(description='利息保障倍数', example=12.5),
+})
+
+# 现金流模型
+cashflow_model = agent_ns.model('Cashflow', {
+    'operating_cashflow': fields.Float(description='经营性现金流(亿元)', example=200.5),
+    'free_cashflow': fields.Float(description='自由现金流(亿元)', example=120.3),
+    'cashflow_per_share': fields.Float(description='每股现金流(元)', example=5.5),
+    'operating_cashflow_margin': fields.Float(description='现金流利润率(%)', example=25.0),
+})
 
 # 研报基础模型
 report_base_model = agent_ns.model('ReportBase', {
@@ -58,6 +108,13 @@ report_base_model = agent_ns.model('ReportBase', {
 report_detail_model = agent_ns.inherit('ReportDetail', report_base_model, {
     'core_views': fields.String(description='核心观点'),
     'financial_forecast': fields.Raw(description='财务预测数据'),
+    'investment_rating': fields.Nested(investment_rating_model, description='投资评级建议'),
+    'profitability': fields.Nested(profitability_model, description='盈利能力指标'),
+    'growth': fields.Nested(growth_model, description='成长性指标'),
+    'valuation': fields.Nested(valuation_model, description='估值指标'),
+    'solvency': fields.Nested(solvency_model, description='偿债能力指标'),
+    'cashflow': fields.Nested(cashflow_model, description='现金流指标'),
+    'content': fields.String(description='研报原文内容'),
     'parse_error': fields.String(description='解析错误信息'),
     'filename': fields.String(description='文件名'),
     'file_path': fields.String(description='文件路径'),
@@ -182,18 +239,25 @@ class ReportUpload(Resource):
                 parse_result = parser.parse(result['file_path'], file_ext)
                 
                 if parse_result['success']:
+                    data = parse_result['data']
                     report_storage.update(report['id'], {
                         'status': 'completed',
-                        'title': parse_result['data'].get('title', report['title']),
-                        'company': parse_result['data'].get('company', ''),
-                        'company_code': parse_result['data'].get('company_code', ''),
-                        'broker': parse_result['data'].get('broker', ''),
-                        'analyst': parse_result['data'].get('analyst', ''),
-                        'rating': parse_result['data'].get('rating', ''),
-                        'target_price': parse_result['data'].get('target_price'),
-                        'current_price': parse_result['data'].get('current_price'),
-                        'core_views': parse_result['data'].get('core_views', ''),
-                        'financial_forecast': parse_result['data'].get('financial_forecast', {}),
+                        'title': data.get('title', report['title']),
+                        'company': data.get('company', ''),
+                        'company_code': data.get('company_code', ''),
+                        'broker': data.get('broker', ''),
+                        'analyst': data.get('analyst', ''),
+                        'rating': data.get('rating', ''),
+                        'target_price': data.get('target_price'),
+                        'current_price': data.get('current_price'),
+                        'core_views': data.get('core_views', ''),
+                        'financial_forecast': data.get('financial_forecast', {}),
+                        'investment_rating': data.get('investment_rating', {}),
+                        'profitability': data.get('profitability', {}),
+                        'growth': data.get('growth', {}),
+                        'valuation': data.get('valuation', {}),
+                        'solvency': data.get('solvency', {}),
+                        'cashflow': data.get('cashflow', {}),
                     })
                 else:
                     report_storage.update(report['id'], {
@@ -341,18 +405,25 @@ class ReportReparse(Resource):
             parse_result = parser.parse(report['file_path'], report['file_type'])
             
             if parse_result['success']:
+                data = parse_result['data']
                 updated = report_storage.update(report_id, {
                     'status': 'completed',
-                    'title': parse_result['data'].get('title', report['title']),
-                    'company': parse_result['data'].get('company', ''),
-                    'company_code': parse_result['data'].get('company_code', ''),
-                    'broker': parse_result['data'].get('broker', ''),
-                    'analyst': parse_result['data'].get('analyst', ''),
-                    'rating': parse_result['data'].get('rating', ''),
-                    'target_price': parse_result['data'].get('target_price'),
-                    'current_price': parse_result['data'].get('current_price'),
-                    'core_views': parse_result['data'].get('core_views', ''),
-                    'financial_forecast': parse_result['data'].get('financial_forecast', {}),
+                    'title': data.get('title', report['title']),
+                    'company': data.get('company', ''),
+                    'company_code': data.get('company_code', ''),
+                    'broker': data.get('broker', ''),
+                    'analyst': data.get('analyst', ''),
+                    'rating': data.get('rating', ''),
+                    'target_price': data.get('target_price'),
+                    'current_price': data.get('current_price'),
+                    'core_views': data.get('core_views', ''),
+                    'financial_forecast': data.get('financial_forecast', {}),
+                    'investment_rating': data.get('investment_rating', {}),
+                    'profitability': data.get('profitability', {}),
+                    'growth': data.get('growth', {}),
+                    'valuation': data.get('valuation', {}),
+                    'solvency': data.get('solvency', {}),
+                    'cashflow': data.get('cashflow', {}),
                 })
                 return {
                     'code': 0,
@@ -372,6 +443,83 @@ class ReportReparse(Resource):
                 'parse_error': str(e)
             })
             return {'code': 'PARSE_FAILED', 'message': str(e), 'data': None, 'trace_id': generate_trace_id()}, 422
+
+
+@agent_ns.route('/reports/<string:report_id>/download')
+@agent_ns.param('report_id', '研报ID')
+class ReportDownload(Resource):
+    """研报PDF下载接口"""
+    
+    @agent_ns.doc('download_report')
+    @agent_ns.response(200, '下载成功')
+    @agent_ns.response(404, '研报不存在', error_response_model)
+    def get(self, report_id):
+        """
+        下载研报PDF文件
+        
+        返回PDF文件流，支持浏览器下载
+        """
+        report = report_storage.get(report_id)
+        
+        if not report:
+            return {'code': 'REPORT_NOT_FOUND', 'message': '研报不存在或已删除', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        filename = report.get('filename')
+        if not filename:
+            return {'code': 'FILE_NOT_FOUND', 'message': '文件不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        filepath = file_storage.get(filename)
+        if not filepath or not os.path.exists(filepath):
+            return {'code': 'FILE_NOT_FOUND', 'message': '文件不存在或已被删除', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        # 设置下载文件名
+        download_name = f"{report.get('company', '研报')}_{report.get('broker', '')}_{report.get('title', '未命名')[:20]}.pdf"
+        
+        return send_file(
+            filepath,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=download_name
+        )
+
+
+@agent_ns.route('/reports/<string:report_id>/preview')
+@agent_ns.param('report_id', '研报ID')
+class ReportPreview(Resource):
+    """研报PDF在线预览接口"""
+    
+    @agent_ns.doc('preview_report')
+    @agent_ns.response(200, '预览成功')
+    @agent_ns.response(404, '研报不存在', error_response_model)
+    def get(self, report_id):
+        """
+        在线预览研报PDF文件
+        
+        返回PDF文件流，支持浏览器内嵌预览
+        """
+        report = report_storage.get(report_id)
+        
+        if not report:
+            return {'code': 'REPORT_NOT_FOUND', 'message': '研报不存在或已删除', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        filename = report.get('filename')
+        if not filename:
+            return {'code': 'FILE_NOT_FOUND', 'message': '文件不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        filepath = file_storage.get(filename)
+        if not filepath or not os.path.exists(filepath):
+            return {'code': 'FILE_NOT_FOUND', 'message': '文件不存在或已被删除', 'data': None, 'trace_id': generate_trace_id()}, 404
+        
+        # 获取文件mime类型
+        mime_type, _ = mimetypes.guess_type(filepath)
+        if not mime_type:
+            mime_type = 'application/pdf'
+        
+        return send_file(
+            filepath,
+            mimetype=mime_type,
+            as_attachment=False  # 不强制下载，支持浏览器预览
+        )
 
 
 @agent_ns.route('/ai-status')
@@ -475,14 +623,6 @@ class ReportFetch(Resource):
 compare_request_model = agent_ns.model('CompareRequest', {
     'report_ids': fields.List(fields.String, required=True, description='研报ID列表'),
     'compare_type': fields.String(required=True, description='对比类型', enum=['company', 'industry', 'custom']),
-    'dimensions': fields.List(fields.String, description='对比维度列表', enum=['rating', 'financial', 'views', 'analyst']),
-})
-
-dimension_result_model = agent_ns.model('DimensionResult', {
-    'dimension': fields.String(description='维度ID'),
-    'dimension_label': fields.String(description='维度名称'),
-    'summary': fields.String(description='维度分析总结'),
-    'details': fields.List(fields.String, description='维度详细分析'),
 })
 
 compare_response_model = agent_ns.model('CompareResponse', {
@@ -490,7 +630,6 @@ compare_response_model = agent_ns.model('CompareResponse', {
     'similarities': fields.List(fields.String, description='共同点'),
     'differences': fields.List(fields.String, description='差异点'),
     'recommendations': fields.List(fields.String, description='投资建议'),
-    'dimension_results': fields.List(fields.Nested(dimension_result_model), description='按维度分析结果'),
 })
 
 query_request_model = agent_ns.model('QueryRequest', {
@@ -528,10 +667,6 @@ class AnalysisCompare(Resource):
         data = request.get_json()
         report_ids = data.get('report_ids', [])
         compare_type = data.get('compare_type', 'company')
-        dimensions = data.get('dimensions', [])
-        # 默认维度：如果没传，给 rating + views
-        if not dimensions:
-            dimensions = ['rating', 'views']
         
         if len(report_ids) < 2:
             return {'code': 'INVALID_PARAMS', 'message': '请至少选择2份研报', 'data': None, 'trace_id': generate_trace_id()}, 400
@@ -547,7 +682,7 @@ class AnalysisCompare(Resource):
             return {'code': 'INVALID_PARAMS', 'message': '有效的研报数量不足', 'data': None, 'trace_id': generate_trace_id()}, 400
         
         # 构建对比提示词
-        prompt = _build_compare_prompt(reports, compare_type, dimensions)
+        prompt = _build_compare_prompt(reports, compare_type)
         
         # 调用AI生成对比分析
         ai_result = ai_service.generate_text(prompt, max_tokens=3000)
@@ -556,7 +691,7 @@ class AnalysisCompare(Resource):
             return {'code': 'AI_ERROR', 'message': ai_result['error'], 'data': None, 'trace_id': generate_trace_id()}, 500
         
         # 解析AI返回的结果
-        result = _parse_compare_result(ai_result['text'], dimensions)
+        result = _parse_compare_result(ai_result['text'])
         
         return {
             'code': 0,
@@ -599,7 +734,7 @@ class AnalysisQuery(Resource):
             reports = [r for r in all_reports['items'] if r['status'] == 'completed'][:5]
         
         # 构建问答提示词
-        prompt = _build_query_prompt(question, reports, history_messages=None)
+        prompt = _build_query_prompt(question, reports)
         
         # 调用AI生成回答
         ai_result = ai_service.generate_text(prompt, max_tokens=2500)
@@ -622,255 +757,85 @@ class AnalysisQuery(Resource):
         }
 
 
-def _parse_sources_from_text(full_text, reports):
-    """从 AI 回复中解析 [来源:研报标题] 标记，匹配实际研报列表
-    
-    如果 AI 没有在回答中标注来源，fallback 取前3份研报
-    """
-    sources = []
-    matched_ids = set()
-    
-    # 解析 [来源:xxx] 标记
-    citations = re.findall(r'\[来源[::：](.+?)\]', full_text)
-    if citations:
-        for cite in citations:
-            cite = cite.strip()
-            for r in reports:
-                if r['id'] not in matched_ids and cite in r.get('title', ''):
-                    matched_ids.add(r['id'])
-                    sources.append({
-                        'report_id': r['id'],
-                        'report_title': r['title'],
-                        'excerpt': (r.get('core_views', '') or '')[:100] + '...'
-                    })
-                    break
-    
-    # fallback: 若未匹配到任何来源，取前3份研报
-    if not sources:
-        for r in reports[:3]:
-            sources.append({
-                'report_id': r['id'],
-                'report_title': r['title'],
-                'excerpt': (r.get('core_views', '') or '')[:100] + '...'
-            })
-    
-    return sources
-
-
-@agent_ns.route('/analysis/query-stream')
-class AnalysisQueryStream(Resource):
-    """流式AI问答接口"""
-    
-    @agent_ns.doc('ai_query_stream')
-    @agent_ns.response(200, '流式回答')
-    @agent_ns.response(400, '参数错误', error_response_model)
-    def post(self):
-        """
-        流式AI智能问答 - SSE
-        
-        基于研报内容进行流式智能问答，支持多轮对话上下文
-        """
-        data = request.get_json()
-        if not data:
-            return {'code': 'INVALID_PARAMS', 'message': '请求体不能为空', 'data': None, 'trace_id': generate_trace_id()}, 400
-        
-        question = data.get('question', '').strip()
-        report_ids = data.get('report_ids', [])
-        session_id = data.get('session_id', None)
-        
-        if not question:
-            return {'code': 'EMPTY_QUESTION', 'message': '问题不能为空', 'data': None, 'trace_id': generate_trace_id()}, 400
-        
-        # --- 会话处理 ---
-        history_messages = []
-        created_new_session = False
-        
-        if session_id:
-            session = chat_storage.get_session(session_id)
-            if session:
-                history_messages = session.get('messages', [])
-            else:
-                # session_id 无效，忽略并创建新会话
-                session_id = None
-        
-        if not session_id:
-            # 自动创建新会话
-            title = question[:20] if len(question) > 20 else question
-            new_session = chat_storage.create_session(title=title, report_ids=report_ids)
-            session_id = new_session['id']
-            created_new_session = True
-        
-        # --- 获取参考研报 ---
-        reports = []
-        if report_ids:
-            for rid in report_ids:
-                report = report_storage.get(rid)
-                if report:
-                    reports.append(report)
-        else:
-            all_reports = report_storage.list(page_size=100)
-            reports = [r for r in all_reports['items'] if r['status'] == 'completed'][:5]
-        
-        # --- 构建 prompt ---
-        prompt = _build_query_prompt(question, reports, history_messages=history_messages)
-        
-        # --- 存储用户消息 ---
-        chat_storage.add_message(session_id, 'user', question)
-        
-        # --- 调用流式 AI ---
-        try:
-            stream_gen = ai_service.stream_generate_text(prompt, max_tokens=2500)
-        except Exception as e:
-            logger.error("流式 AI 服务调用失败: %s", str(e))
-            return {'code': 'AI_ERROR', 'message': f'AI服务调用失败: {str(e)}', 'data': None, 'trace_id': generate_trace_id()}, 500
-        
-        def generate():
-            full_text = ''
-            try:
-                # 如果是新创建的会话，先返回 session_id
-                if created_new_session:
-                    yield f'data: {json.dumps({"session_id": session_id, "content": "", "done": False}, ensure_ascii=False)}\n\n'
-                
-                for chunk in stream_gen:
-                    # 检查是否为错误消息
-                    if chunk.startswith('[ERROR]'):
-                        error_msg = chunk[len('[ERROR]'):].strip()
-                        yield f'data: {json.dumps({"content": "", "done": True, "error": error_msg}, ensure_ascii=False)}\n\n'
-                        # 存储错误回复
-                        chat_storage.add_message(session_id, 'assistant', f'抱歉，{error_msg}')
-                        return
-                    
-                    full_text += chunk
-                    yield f'data: {json.dumps({"content": chunk, "done": False}, ensure_ascii=False)}\n\n'
-                
-                # 流结束，构建来源引用
-                sources = _parse_sources_from_text(full_text, reports)
-                
-                # 存储 AI 回复
-                chat_storage.add_message(session_id, 'assistant', full_text, sources)
-                
-                # 发送结束事件
-                yield f'data: {json.dumps({"content": "", "done": True, "sources": sources}, ensure_ascii=False)}\n\n'
-                
-            except Exception as e:
-                logger.error("流式生成异常: %s", str(e))
-                yield f'data: {json.dumps({"content": "", "done": True, "error": f"生成失败: {str(e)}"}, ensure_ascii=False)}\n\n'
-                # 如果已经有部分内容，保存已生成的部分
-                if full_text:
-                    chat_storage.add_message(session_id, 'assistant', full_text)
-        
-        return Response(
-            generate(),
-            mimetype='text/event-stream',
-            headers={
-                'Cache-Control': 'no-cache',
-                'X-Accel-Buffering': 'no',
-                'Connection': 'keep-alive'
-            }
-        )
-
-
-def _build_compare_prompt(reports, compare_type, dimensions):
-    """构建对比分析提示词（按维度组织）"""
-    type_names = {'company': '公司', 'industry': '行业', 'custom': '综合'}
-    dim_labels = {
-        'rating': '投资评级', 'financial': '财务预测',
-        'views': '核心观点', 'analyst': '券商/分析师'
+def _build_compare_prompt(reports, compare_type):
+    """构建对比分析提示词"""
+    type_names = {
+        'company': '公司',
+        'industry': '行业',
+        'custom': '综合'
     }
     
-    dim_desc = '、'.join([dim_labels.get(d, d) for d in dimensions])
-    prompt = f"请对以下{len(reports)}份研报进行{type_names.get(compare_type, '综合')}对比分析，重点关注以下维度：{dim_desc}。\n\n"
+    prompt = f"请对以下{len(reports)}份研报进行{type_names.get(compare_type, '综合')}对比分析。\n\n"
     
     for i, report in enumerate(reports, 1):
         prompt += f"【研报{i}】\n"
         prompt += f"标题: {report.get('title', '未命名')}\n"
         prompt += f"公司: {report.get('company', '-')} ({report.get('company_code', '-')})\n"
+        prompt += f"券商: {report.get('broker', '-')}\n"
+        prompt += f"评级: {report.get('rating', '-')}\n"
+        prompt += f"目标价: {report.get('target_price', '-')}\n"
+        prompt += f"核心观点: {report.get('core_views', '-')}\n"
         
-        if 'rating' in dimensions:
-            prompt += f"评级: {report.get('rating', '-')}\n"
-            prompt += f"目标价: {report.get('target_price', '-')}\n"
-            prompt += f"当前价: {report.get('current_price', '-')}\n"
+        # 添加新的财务指标
+        investment_rating = report.get('investment_rating', {})
+        if investment_rating:
+            prompt += f"投资建议: {investment_rating.get('recommendation', '-')}\n"
         
-        if 'financial' in dimensions:
-            ff = report.get('financial_forecast', {})
-            if ff:
-                prompt += f"财务预测:\n"
-                for key, val in ff.items():
-                    prompt += f"  {key}: {val}\n"
+        profitability = report.get('profitability', {})
+        if profitability:
+            prompt += f"盈利能力: 毛利率{profitability.get('gross_margin', '-')}%, 净利率{profitability.get('net_margin', '-')}%, ROE{profitability.get('roe', '-')}%\n"
         
-        if 'views' in dimensions:
-            prompt += f"核心观点: {report.get('core_views', '-')}\n"
+        growth = report.get('growth', {})
+        if growth:
+            prompt += f"成长性: 营收增速{growth.get('revenue_growth', '-')}%, 利润增速{growth.get('profit_growth', '-')}%\n"
         
-        if 'analyst' in dimensions:
-            prompt += f"券商: {report.get('broker', '-')}\n"
-            prompt += f"分析师: {report.get('analyst', '-')}\n"
+        valuation = report.get('valuation', {})
+        if valuation:
+            prompt += f"估值: PE-TTM {valuation.get('pe_ttm', '-')}, PB {valuation.get('pb', '-')}, PEG {valuation.get('peg', '-')}\n"
         
         prompt += "\n"
     
-    prompt += "请按以下格式输出分析结果：\n\n"
-    prompt += "【分析总结】\n（总体对比分析的总结，200字以内）\n\n"
-    prompt += "【共同点】\n1. （共同点1）\n2. （共同点2）\n3. （共同点3）\n\n"
-    prompt += "【差异点】\n1. （差异点1）\n2. （差异点2）\n3. （差异点3）\n\n"
-    prompt += "【投资建议】\n1. （建议1）\n2. （建议2）\n3. （建议3）\n\n"
-    
-    for d in dimensions:
-        label = dim_labels.get(d, d)
-        prompt += f"【维度分析-{label}】\n"
-        prompt += f"总结: （{label}维度的对比总结，100字以内）\n"
-        prompt += f"1. （详细分析1）\n2. （详细分析2）\n3. （详细分析3）\n\n"
-    
+    prompt += """请按以下格式输出分析结果：
+
+【分析总结】
+（总体对比分析的总结，200字以内）
+
+【共同点】
+1. （共同点1）
+2. （共同点2）
+3. （共同点3）
+
+【差异点】
+1. （差异点1）
+2. （差异点2）
+3. （差异点3）
+
+【投资建议】
+1. （建议1）
+2. （建议2）
+3. （建议3）
+"""
     return prompt
 
 
-def _parse_compare_result(text, dimensions=None):
-    """解析对比分析结果（含维度分析）"""
-    dim_labels = {
-        'rating': '投资评级', 'financial': '财务预测',
-        'views': '核心观点', 'analyst': '券商/分析师'
-    }
-    
+def _parse_compare_result(text):
+    """解析对比分析结果"""
     result = {
         'comparison_result': '',
         'similarities': [],
         'differences': [],
-        'recommendations': [],
-        'dimension_results': []
+        'recommendations': []
     }
     
     lines = text.split('\n')
     current_section = None
-    current_dim = None
-    current_dim_data = None
     
     for line in lines:
         line = line.strip()
         if not line:
             continue
-        
-        # 检查维度分析段落
-        dim_matched = False
-        if dimensions:
-            for d in dimensions:
-                label = dim_labels.get(d, d)
-                if f'维度分析-{label}' in line or f'维度分析_{label}' in line:
-                    # 保存上一个维度
-                    if current_dim_data:
-                        result['dimension_results'].append(current_dim_data)
-                    current_section = 'dimension'
-                    current_dim = d
-                    current_dim_data = {
-                        'dimension': d,
-                        'dimension_label': label,
-                        'summary': '',
-                        'details': []
-                    }
-                    dim_matched = True
-                    break
-        
-        if dim_matched:
-            continue
             
-        if '分析总结' in line and '维度' not in line:
+        if '分析总结' in line:
             current_section = 'summary'
             continue
         elif '共同点' in line:
@@ -884,212 +849,55 @@ def _parse_compare_result(text, dimensions=None):
             continue
         
         # 去除序号
-        cleaned = line
-        if len(line) > 0 and line[0].isdigit() and '. ' in line:
-            cleaned = line.split('. ', 1)[1]
+        if line[0].isdigit() and '. ' in line:
+            line = line.split('. ', 1)[1]
         elif line.startswith('- '):
-            cleaned = line[2:]
+            line = line[2:]
         
         if current_section == 'summary':
-            result['comparison_result'] += cleaned + '\n'
-        elif current_section == 'similarities' and cleaned:
-            result['similarities'].append(cleaned)
-        elif current_section == 'differences' and cleaned:
-            result['differences'].append(cleaned)
-        elif current_section == 'recommendations' and cleaned:
-            result['recommendations'].append(cleaned)
-        elif current_section == 'dimension' and current_dim_data:
-            if cleaned.startswith('总结:') or cleaned.startswith('总结：'):
-                current_dim_data['summary'] = cleaned.split(':', 1)[-1].split('：', 1)[-1].strip()
-            elif cleaned:
-                current_dim_data['details'].append(cleaned)
-    
-    # 保存最后一个维度
-    if current_dim_data:
-        result['dimension_results'].append(current_dim_data)
+            result['comparison_result'] += line + '\n'
+        elif current_section == 'similarities' and line:
+            result['similarities'].append(line)
+        elif current_section == 'differences' and line:
+            result['differences'].append(line)
+        elif current_section == 'recommendations' and line:
+            result['recommendations'].append(line)
     
     result['comparison_result'] = result['comparison_result'].strip()
     return result
 
 
-# ============ 会话管理 API ============
-
-@agent_ns.route('/sessions')
-class SessionList(Resource):
-    """会话列表接口"""
+def _build_query_prompt(question, reports):
+    """构建问答提示词"""
+    prompt = "你是一位专业的证券分析师，请基于以下研报内容回答问题。\n\n"
     
-    @agent_ns.doc('list_sessions')
-    @agent_ns.response(200, '查询成功', success_response_model)
-    def get(self):
-        """
-        获取所有会话列表
-        
-        返回所有会话的摘要信息（不含完整消息）
-        """
-        sessions = chat_storage.list_sessions()
-        return {
-            'code': 0,
-            'message': 'success',
-            'data': {'sessions': sessions},
-            'trace_id': generate_trace_id()
-        }
-    
-    @agent_ns.doc('create_session')
-    @agent_ns.response(200, '创建成功', success_response_model)
-    def post(self):
-        """
-        创建新会话
-        
-        可选传入 title 和 report_ids
-        """
-        data = request.get_json() or {}
-        title = data.get('title', '新对话')
-        report_ids = data.get('report_ids', [])
-        
-        session = chat_storage.create_session(title=title, report_ids=report_ids)
-        return {
-            'code': 0,
-            'message': '创建成功',
-            'data': {'session': session},
-            'trace_id': generate_trace_id()
-        }
-
-
-@agent_ns.route('/sessions/<string:session_id>')
-@agent_ns.param('session_id', '会话ID')
-class SessionDetail(Resource):
-    """单个会话操作接口"""
-    
-    @agent_ns.doc('get_session')
-    @agent_ns.response(200, '查询成功', success_response_model)
-    @agent_ns.response(404, '会话不存在', error_response_model)
-    def get(self, session_id):
-        """
-        获取会话详情
-        
-        根据会话ID获取详细信息（包含所有消息）
-        """
-        session = chat_storage.get_session(session_id)
-        if not session:
-            return {'code': 1, 'message': '会话不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
-        
-        return {
-            'code': 0,
-            'message': 'success',
-            'data': {'session': session},
-            'trace_id': generate_trace_id()
-        }
-    
-    @agent_ns.doc('update_session')
-    @agent_ns.response(200, '更新成功', success_response_model)
-    @agent_ns.response(400, '参数错误', error_response_model)
-    @agent_ns.response(404, '会话不存在', error_response_model)
-    def put(self, session_id):
-        """
-        更新会话（重命名）
-        
-        修改会话标题
-        """
-        data = request.get_json() or {}
-        title = data.get('title', '').strip()
-        
-        if not title:
-            return {'code': 1, 'message': '标题不能为空', 'data': None, 'trace_id': generate_trace_id()}, 400
-        
-        result = chat_storage.update_session(session_id, title=title)
-        if not result:
-            return {'code': 1, 'message': '会话不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
-        
-        return {
-            'code': 0,
-            'message': '更新成功',
-            'data': {'session': result},
-            'trace_id': generate_trace_id()
-        }
-    
-    @agent_ns.doc('delete_session')
-    @agent_ns.response(200, '删除成功', success_response_model)
-    @agent_ns.response(404, '会话不存在', error_response_model)
-    def delete(self, session_id):
-        """
-        删除会话
-        
-        删除指定会话及其所有消息
-        """
-        success = chat_storage.delete_session(session_id)
-        if not success:
-            return {'code': 1, 'message': '会话不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
-        
-        return {
-            'code': 0,
-            'message': '删除成功',
-            'data': None,
-            'trace_id': generate_trace_id()
-        }
-
-
-@agent_ns.route('/sessions/<string:session_id>/messages')
-@agent_ns.param('session_id', '会话ID')
-class SessionMessages(Resource):
-    """会话消息接口"""
-    
-    @agent_ns.doc('get_session_messages')
-    @agent_ns.response(200, '查询成功', success_response_model)
-    @agent_ns.response(404, '会话不存在', error_response_model)
-    def get(self, session_id):
-        """
-        获取会话消息历史
-        
-        返回指定会话的所有消息列表
-        """
-        session = chat_storage.get_session(session_id)
-        if not session:
-            return {'code': 1, 'message': '会话不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
-        
-        return {
-            'code': 0,
-            'message': 'success',
-            'data': {'messages': session.get('messages', [])},
-            'trace_id': generate_trace_id()
-        }
-
-
-
-def _build_query_prompt(question, reports, history_messages=None):
-    """构建问答提示词
-    
-    Args:
-        question: 用户问题
-        reports: 参考研报列表
-        history_messages: 历史对话消息列表，用于多轮对话上下文
-    """
-    prompt = "你是一位专业的证券分析师，请基于以下研报内容回答问题。\n"
-    
-    if history_messages:
-        prompt += "请基于对话历史的上下文继续回答。\n"
-    
-    prompt += "\n【参考研报】\n"
+    prompt += "【参考研报】\n"
     for i, report in enumerate(reports, 1):
         prompt += f"\n研报{i}: {report.get('title', '未命名')}\n"
         prompt += f"公司: {report.get('company', '-')} ({report.get('company_code', '-')})\n"
         prompt += f"核心观点: {report.get('core_views', '-')}\n"
+        
+        # 添加新的财务指标
+        investment_rating = report.get('investment_rating', {})
+        if investment_rating:
+            prompt += f"投资建议: {investment_rating.get('recommendation', '-')}\n"
+        
+        profitability = report.get('profitability', {})
+        if profitability:
+            prompt += f"盈利能力: 营收{profitability.get('revenue', '-')}亿, 毛利率{profitability.get('gross_margin', '-')}%, ROE{profitability.get('roe', '-')}%\n"
+        
+        growth = report.get('growth', {})
+        if growth:
+            prompt += f"成长性: 营收增速{growth.get('revenue_growth', '-')}%, 利润增速{growth.get('profit_growth', '-')}%\n"
+        
+        valuation = report.get('valuation', {})
+        if valuation:
+            prompt += f"估值: PE-TTM {valuation.get('pe_ttm', '-')}, PB {valuation.get('pb', '-')}\n"
+        
         if report.get('financial_forecast'):
             prompt += f"财务预测: {str(report['financial_forecast'])}\n"
     
-    # 插入最近5轮对话历史
-    if history_messages:
-        recent = history_messages[-10:]  # 最近5轮 = 10条消息（user+assistant）
-        prompt += "\n【对话历史】\n"
-        for msg in recent:
-            role_label = '用户' if msg.get('role') == 'user' else '助手'
-            content = msg.get('content', '')
-            # 每条消息最多保留500字
-            if len(content) > 500:
-                content = content[:500] + '...'
-            prompt += f"{role_label}: {content}\n"
-    
     prompt += f"\n【用户问题】\n{question}\n\n"
     prompt += "请基于以上研报内容，给出专业、准确的回答。如果研报中没有相关信息，请明确说明。"
-    prompt += "请在回答中适当引用研报来源，使用格式 [来源:研报标题]。"
     
     return prompt

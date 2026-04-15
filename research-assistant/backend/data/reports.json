@@ -372,9 +372,10 @@
     "file_path": "uploads/600519_SH_20260414.pdf",
     "file_type": "pdf",
     "file_size": 3303975,
-    "status": "completed",
-    "parse_error": "",
+    "status": "failed",
+    "parse_error": "解析失败: [Errno 2] No such file or directory: 'uploads/600519_SH_20260414.pdf'",
     "created_at": "2026-04-14T19:10:22.965086",
+<<<<<<< HEAD
     "updated_at": "2026-04-14T19:10:22.965089"
   },
   {
@@ -422,5 +423,8 @@
     "parse_error": "",
     "created_at": "2026-04-15T11:16:44.231392",
     "updated_at": "2026-04-15T11:16:44.231394"
+=======
+    "updated_at": "2026-04-15T11:16:09.799192"
+>>>>>>> origin
   }
 ]
