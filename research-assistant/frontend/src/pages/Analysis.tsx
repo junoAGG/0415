@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { message, Spin } from 'antd';
 import type { Report } from '../types';
-import type { AIQueryResponse, CompareResponse } from '../types/analysis';
+import type { AIQueryResponse, CompareResponse, CompareDimension } from '../types/analysis';
+import { SCENE_DIMENSIONS, DIMENSION_LIST } from '../types/analysis';
 import { reportApi } from '../services/api';
 import { aiService } from '../services/aiService';
 
@@ -12,6 +13,7 @@ export default function Analysis() {
   // 对比分析状态
   const [selectedReports, setSelectedReports] = useState<string[]>([]);
   const [compareType, setCompareType] = useState<'company' | 'industry' | 'custom'>('company');
+  const [selectedDimensions, setSelectedDimensions] = useState<CompareDimension[]>(SCENE_DIMENSIONS['company']);
   const [compareResult, setCompareResult] = useState<CompareResponse | null>(null);
   const [comparing, setComparing] = useState(false);
   
@@ -55,7 +57,7 @@ export default function Analysis() {
     }
     setComparing(true);
     try {
-      const result = await aiService.compareReports(selectedReports, compareType);
+      const result = await aiService.compareReports(selectedReports, compareType, selectedDimensions);
       setCompareResult(result);
       const companies = reports.filter(r => selectedReports.includes(r.id)).map(r => r.company).join(' / ');
       addHistory('compare', `${companies} 对比`, '已生成新的对比分析结果。');
@@ -148,6 +150,27 @@ export default function Analysis() {
               {compareResult.recommendations?.map((item, i) => <li key={i}>{item}</li>)}
             </ul>
           </div>
+          {/* 维度分析结果 */}
+          {compareResult.dimension_results && compareResult.dimension_results.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div className="section-kicker">维度详细分析</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
+                {compareResult.dimension_results.map((dr, i) => (
+                  <div className="compare-box" key={i}>
+                    <h4 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ background: 'var(--accent, #3b82f6)', color: '#fff', borderRadius: 4, padding: '1px 8px', fontSize: 11 }}>
+                        {dr.dimension_label}
+                      </span>
+                    </h4>
+                    {dr.summary && <p className="section-copy" style={{ margin: '6px 0 8px' }}>{dr.summary}</p>}
+                    <ul className="bullet-list">
+                      {dr.details?.map((d, j) => <li key={j}>{d}</li>)}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="source-list">
             {selected.map(r => (
               <div className="source-item" key={r.id}>
@@ -284,13 +307,49 @@ export default function Analysis() {
                   <select
                     className="toolbar-select"
                     value={compareType}
-                    onChange={e => setCompareType(e.target.value as any)}
+                    onChange={e => {
+                      const t = e.target.value as 'company' | 'industry' | 'custom';
+                      setCompareType(t);
+                      setSelectedDimensions(SCENE_DIMENSIONS[t]);
+                    }}
                     style={{ width: '100%' }}
                   >
                     <option value="company">公司对比</option>
                     <option value="industry">行业对比</option>
                     <option value="custom">自定义对比</option>
                   </select>
+                </div>
+                <div className="section-block">
+                  <div className="section-kicker">分析维度</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {DIMENSION_LIST.filter(d => d.scenes.includes(compareType)).map(dim => (
+                      <label
+                        key={dim.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
+                          background: selectedDimensions.includes(dim.id) ? 'var(--accent-bg, #e6f0ff)' : 'transparent',
+                          border: `1px solid ${selectedDimensions.includes(dim.id) ? 'var(--accent, #3b82f6)' : 'var(--line, #e5e7eb)'}`,
+                          fontSize: 13, transition: 'all .15s',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedDimensions.includes(dim.id)}
+                          onChange={() => {
+                            setSelectedDimensions(prev =>
+                              prev.includes(dim.id) ? prev.filter(x => x !== dim.id) : [...prev, dim.id]
+                            );
+                          }}
+                          style={{ marginTop: 1 }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 500 }}>{dim.label}</div>
+                          <div className="report-desc" style={{ fontSize: 11 }}>{dim.description}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div className="section-block">
                   <div className="section-kicker">已选研报</div>

@@ -623,6 +623,14 @@ class ReportFetch(Resource):
 compare_request_model = agent_ns.model('CompareRequest', {
     'report_ids': fields.List(fields.String, required=True, description='研报ID列表'),
     'compare_type': fields.String(required=True, description='对比类型', enum=['company', 'industry', 'custom']),
+    'dimensions': fields.List(fields.String, required=False, description='对比维度列表', example=['rating', 'financial', 'views', 'analyst']),
+})
+
+dimension_result_model = agent_ns.model('DimensionResult', {
+    'dimension': fields.String(description='维度标识'),
+    'dimension_label': fields.String(description='维度中文名'),
+    'summary': fields.String(description='维度分析总结'),
+    'details': fields.List(fields.String, description='维度分析详情'),
 })
 
 compare_response_model = agent_ns.model('CompareResponse', {
@@ -630,6 +638,7 @@ compare_response_model = agent_ns.model('CompareResponse', {
     'similarities': fields.List(fields.String, description='共同点'),
     'differences': fields.List(fields.String, description='差异点'),
     'recommendations': fields.List(fields.String, description='投资建议'),
+    'dimension_results': fields.List(fields.Nested(dimension_result_model), description='按维度分析结果'),
 })
 
 query_request_model = agent_ns.model('QueryRequest', {
@@ -667,6 +676,7 @@ class AnalysisCompare(Resource):
         data = request.get_json()
         report_ids = data.get('report_ids', [])
         compare_type = data.get('compare_type', 'company')
+        dimensions = data.get('dimensions', [])
         
         if len(report_ids) < 2:
             return {'code': 'INVALID_PARAMS', 'message': '请至少选择2份研报', 'data': None, 'trace_id': generate_trace_id()}, 400
@@ -681,17 +691,17 @@ class AnalysisCompare(Resource):
         if len(reports) < 2:
             return {'code': 'INVALID_PARAMS', 'message': '有效的研报数量不足', 'data': None, 'trace_id': generate_trace_id()}, 400
         
-        # 构建对比提示词
-        prompt = _build_compare_prompt(reports, compare_type)
+        # 构建对比提示词（含维度）
+        prompt = _build_compare_prompt(reports, compare_type, dimensions)
         
         # 调用AI生成对比分析
-        ai_result = ai_service.generate_text(prompt, max_tokens=3000)
+        ai_result = ai_service.generate_text(prompt, max_tokens=4000)
         
         if not ai_result['success']:
             return {'code': 'AI_ERROR', 'message': ai_result['error'], 'data': None, 'trace_id': generate_trace_id()}, 500
         
-        # 解析AI返回的结果
-        result = _parse_compare_result(ai_result['text'])
+        # 解析AI返回的结果（含维度）
+        result = _parse_compare_result(ai_result['text'], dimensions)
         
         return {
             'code': 0,
@@ -757,8 +767,17 @@ class AnalysisQuery(Resource):
         }
 
 
-def _build_compare_prompt(reports, compare_type):
-    """构建对比分析提示词"""
+# 维度中文名映射
+DIMENSION_LABELS = {
+    'rating': '投资评级',
+    'financial': '财务预测',
+    'views': '核心观点',
+    'analyst': '券商分析师',
+}
+
+
+def _build_compare_prompt(reports, compare_type, dimensions=None):
+    """构建对比分析提示词（支持维度）"""
     type_names = {
         'company': '公司',
         'industry': '行业',
@@ -772,26 +791,37 @@ def _build_compare_prompt(reports, compare_type):
         prompt += f"标题: {report.get('title', '未命名')}\n"
         prompt += f"公司: {report.get('company', '-')} ({report.get('company_code', '-')})\n"
         prompt += f"券商: {report.get('broker', '-')}\n"
+        prompt += f"分析师: {report.get('analyst', '-')}\n"
         prompt += f"评级: {report.get('rating', '-')}\n"
         prompt += f"目标价: {report.get('target_price', '-')}\n"
         prompt += f"核心观点: {report.get('core_views', '-')}\n"
         
-        # 添加新的财务指标
         investment_rating = report.get('investment_rating', {})
         if investment_rating:
-            prompt += f"投资建议: {investment_rating.get('recommendation', '-')}\n"
+            prompt += f"投资建议: {investment_rating.get('recommendation', '-')}，期限{investment_rating.get('time_horizon', '-')}，变化{investment_rating.get('change', '-')}\n"
         
         profitability = report.get('profitability', {})
         if profitability:
-            prompt += f"盈利能力: 毛利率{profitability.get('gross_margin', '-')}%, 净利率{profitability.get('net_margin', '-')}%, ROE{profitability.get('roe', '-')}%\n"
+            prompt += f"盈利能力: 营收{profitability.get('revenue', '-')}亿, 毛利率{profitability.get('gross_margin', '-')}%, 净利率{profitability.get('net_margin', '-')}%, ROE{profitability.get('roe', '-')}%\n"
         
         growth = report.get('growth', {})
         if growth:
-            prompt += f"成长性: 营收增速{growth.get('revenue_growth', '-')}%, 利润增速{growth.get('profit_growth', '-')}%\n"
+            prompt += f"成长性: 营收增速{growth.get('revenue_growth', '-')}%, 利润增速{growth.get('profit_growth', '-')}%, 3年CAGR{growth.get('cagr_3y', '-')}%\n"
         
         valuation = report.get('valuation', {})
         if valuation:
-            prompt += f"估值: PE-TTM {valuation.get('pe_ttm', '-')}, PB {valuation.get('pb', '-')}, PEG {valuation.get('peg', '-')}\n"
+            prompt += f"估值: PE-TTM {valuation.get('pe_ttm', '-')}, PB {valuation.get('pb', '-')}, PEG {valuation.get('peg', '-')}, EV/EBITDA {valuation.get('ev_ebitda', '-')}\n"
+        
+        solvency = report.get('solvency', {})
+        if solvency:
+            prompt += f"偿债能力: 资产负债率{solvency.get('debt_to_asset', '-')}%, 流动比率{solvency.get('current_ratio', '-')}\n"
+        
+        cashflow = report.get('cashflow', {})
+        if cashflow:
+            prompt += f"现金流: 经营性{cashflow.get('operating_cashflow', '-')}亿, 自由现金流{cashflow.get('free_cashflow', '-')}亿\n"
+        
+        if report.get('financial_forecast'):
+            prompt += f"财务预测: {str(report['financial_forecast'])}\n"
         
         prompt += "\n"
     
@@ -815,54 +845,119 @@ def _build_compare_prompt(reports, compare_type):
 2. （建议2）
 3. （建议3）
 """
+    
+    # 如果指定了维度，追加维度分析要求
+    if dimensions:
+        prompt += "\n此外，请针对以下维度分别进行详细分析，每个维度输出总结和要点：\n\n"
+        for dim in dimensions:
+            label = DIMENSION_LABELS.get(dim, dim)
+            if dim == 'rating':
+                prompt += f"【维度-{label}】\n（对比各研报的投资评级、目标价、评级变化，总结评级异同，列出3条要点）\n\n"
+            elif dim == 'financial':
+                prompt += f"【维度-{label}】\n（对比各研报的营收/净利润/EPS预测、盈利能力、成长性、估值指标，总结财务预测异同，列出3条要点）\n\n"
+            elif dim == 'views':
+                prompt += f"【维度-{label}】\n（对比各研报的核心观点、投资逻辑、风险提示，总结观点异同，列出3条要点）\n\n"
+            elif dim == 'analyst':
+                prompt += f"【维度-{label}】\n（对比不同券商/分析师的视角差异、分歧焦点、推荐力度，总结分析师观点差异，列出3条要点）\n\n"
+        prompt += "每个维度请按如下格式输出：\n【维度-维度名称】\n总结：（一句话总结）\n1. （要点1）\n2. （要点2）\n3. （要点3）\n"
+    
     return prompt
 
 
-def _parse_compare_result(text):
-    """解析对比分析结果"""
+def _parse_compare_result(text, dimensions=None):
+    """解析对比分析结果（含维度）"""
     result = {
         'comparison_result': '',
         'similarities': [],
         'differences': [],
-        'recommendations': []
+        'recommendations': [],
+        'dimension_results': []
     }
     
     lines = text.split('\n')
     current_section = None
+    current_dim = None       # 当前正在解析的维度id
+    current_dim_label = None
+    current_dim_summary = ''
+    current_dim_details = []
+    
+    def _flush_dimension():
+        """将已收集的维度数据写入 result"""
+        nonlocal current_dim, current_dim_label, current_dim_summary, current_dim_details
+        if current_dim:
+            result['dimension_results'].append({
+                'dimension': current_dim,
+                'dimension_label': current_dim_label or DIMENSION_LABELS.get(current_dim, current_dim),
+                'summary': current_dim_summary.strip(),
+                'details': current_dim_details[:],
+            })
+        current_dim = None
+        current_dim_label = None
+        current_dim_summary = ''
+        current_dim_details = []
     
     for line in lines:
         line = line.strip()
         if not line:
             continue
-            
-        if '分析总结' in line:
+        
+        # 检测维度标记  【维度-投资评级】
+        if line.startswith('【维度-') and line.endswith('】'):
+            _flush_dimension()
+            label = line[4:-1]  # 提取中文名
+            # 反查维度id
+            dim_id = None
+            for k, v in DIMENSION_LABELS.items():
+                if v == label:
+                    dim_id = k
+                    break
+            current_dim = dim_id or label
+            current_dim_label = label
+            current_section = 'dimension'
+            continue
+        
+        # 基础分段
+        if '分析总结' in line and '维度' not in line:
+            _flush_dimension()
             current_section = 'summary'
             continue
-        elif '共同点' in line:
+        elif '共同点' in line and '维度' not in line:
+            _flush_dimension()
             current_section = 'similarities'
             continue
-        elif '差异点' in line:
+        elif '差异点' in line and '维度' not in line:
+            _flush_dimension()
             current_section = 'differences'
             continue
-        elif '投资建议' in line:
+        elif '投资建议' in line and '维度' not in line:
+            _flush_dimension()
             current_section = 'recommendations'
             continue
         
         # 去除序号
-        if line[0].isdigit() and '. ' in line:
-            line = line.split('. ', 1)[1]
-        elif line.startswith('- '):
-            line = line[2:]
+        clean = line
+        if clean and clean[0].isdigit() and '. ' in clean:
+            clean = clean.split('. ', 1)[1]
+        elif clean.startswith('- '):
+            clean = clean[2:]
         
-        if current_section == 'summary':
+        if current_section == 'dimension' and current_dim:
+            # 维度内容：总结行 vs 要点
+            if clean.startswith('总结：') or clean.startswith('总结:'):
+                current_dim_summary = clean.split('：', 1)[-1].split(':', 1)[-1].strip()
+            else:
+                current_dim_details.append(clean)
+        elif current_section == 'summary':
             result['comparison_result'] += line + '\n'
-        elif current_section == 'similarities' and line:
-            result['similarities'].append(line)
-        elif current_section == 'differences' and line:
-            result['differences'].append(line)
-        elif current_section == 'recommendations' and line:
-            result['recommendations'].append(line)
+        elif current_section == 'similarities' and clean:
+            result['similarities'].append(clean)
+        elif current_section == 'differences' and clean:
+            result['differences'].append(clean)
+        elif current_section == 'recommendations' and clean:
+            result['recommendations'].append(clean)
     
+    # 收尾
+    _flush_dimension()
     result['comparison_result'] = result['comparison_result'].strip()
     return result
 
