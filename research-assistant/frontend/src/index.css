@@ -108,3 +108,13 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* Blink cursor animation for streaming AI responses */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.blink-cursor {
+  animation: blink 1s infinite;
+  font-weight: 100;
+}

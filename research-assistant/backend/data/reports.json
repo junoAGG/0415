@@ -376,5 +376,51 @@
     "parse_error": "",
     "created_at": "2026-04-14T19:10:22.965086",
     "updated_at": "2026-04-14T19:10:22.965089"
+  },
+  {
+    "id": "758b7553-7042-4b16-a08c-a0dafb78a044",
+    "title": "测试公司2024年研究报告1",
+    "company": "测试公司1",
+    "company_code": "600000.SH",
+    "broker": "某证券",
+    "analyst": "张三",
+    "rating": "买入",
+    "target_price": 50.0,
+    "current_price": 45.0,
+    "core_views": "公司基本面良好，增长前景乐观",
+    "financial_forecast": {
+      "2024年净利润": "100亿",
+      "2025年净利润": "120亿"
+    },
+    "file_path": "",
+    "file_type": "",
+    "file_size": 0,
+    "status": "completed",
+    "parse_error": "",
+    "created_at": "2026-04-15T11:16:44.230643",
+    "updated_at": "2026-04-15T11:16:44.230651"
+  },
+  {
+    "id": "24728026-226b-412e-b318-5d964007dae0",
+    "title": "测试公司2024年研究报告2",
+    "company": "测试公司2",
+    "company_code": "600001.SH",
+    "broker": "另一证券",
+    "analyst": "李四",
+    "rating": "增持",
+    "target_price": 55.0,
+    "current_price": 48.0,
+    "core_views": "公司在行业中领先地位稳固，估值合理",
+    "financial_forecast": {
+      "2024年净利润": "150亿",
+      "2025年净利润": "180亿"
+    },
+    "file_path": "",
+    "file_type": "",
+    "file_size": 0,
+    "status": "completed",
+    "parse_error": "",
+    "created_at": "2026-04-15T11:16:44.231392",
+    "updated_at": "2026-04-15T11:16:44.231394"
   }
 ]
