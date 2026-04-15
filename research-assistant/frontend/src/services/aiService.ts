@@ -1,4 +1,4 @@
-import type { AIQueryRequest, AIQueryResponse, CompareRequest, CompareResponse } from '../types/analysis';
+import type { AIQueryRequest, AIQueryResponse, CompareResponse } from '../types/analysis';
 
 const API_BASE = '/api/v1/agent';
 

@@ -8,12 +8,13 @@ import {
   EyeOutlined, BarChartOutlined, FileSearchOutlined, CloudDownloadOutlined,
   MessageOutlined, TagsOutlined, RobotOutlined, CalendarOutlined,
   BankOutlined, DollarOutlined, RiseOutlined, SearchOutlined, FilePdfOutlined,
-  InfoCircleOutlined, CheckCircleOutlined, CloseCircleOutlined
+  InfoCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, StockOutlined
 } from '@ant-design/icons';
-import type { Report, ReportListResponse } from '../types';
+import type { Report, ReportListResponse, Stock } from '../types';
 import { reportApi } from '../services/api';
 import UploadModal from '../components/UploadModal';
-import { colors, gradients, shadows, borderRadius, componentStyles } from '../styles/fintech-theme';
+import StockInfoCard from '../components/StockInfoCard';
+import { colors, gradients, shadows, borderRadius } from '../styles/fintech-theme';
 
 const { Search } = Input;
 const { Title, Text, Paragraph } = Typography;
@@ -33,6 +34,8 @@ export default function ReportList() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [activeTab, setActiveTab] = useState('content');
   const [fetching, setFetching] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
+  const [showStockPanel, setShowStockPanel] = useState(false);
 
   const fetchReports = async (page = 1, search = '') => {
     setLoading(true);
@@ -49,20 +52,82 @@ export default function ReportList() {
         pageSize: res.page_size,
         total: res.total,
       });
+      
+      return res.items;
     } catch (error) {
       message.error('获取研报列表失败');
+      return [];
     } finally {
       setLoading(false);
     }
   };
 
+  // 初始加载研报列表并默认选中第一份
   useEffect(() => {
-    fetchReports();
+    const init = async () => {
+      const items = await fetchReports();
+      // 初始加载时，如果有研报数据，默认选中第一份
+      if (items.length > 0) {
+        const firstReport = items[0];
+        setSelectedReport(firstReport);
+        
+        // 如果研报有股票代码，自动显示股票数据
+        if (firstReport.company_code) {
+          let stockCode = firstReport.company_code;
+          if (stockCode.includes('.')) {
+            stockCode = stockCode.split('.')[0];
+          }
+          const match = stockCode.match(/\d{6}/);
+          if (match) {
+            stockCode = match[0];
+          }
+          
+          const stock: Stock = {
+            code: stockCode,
+            name: firstReport.company,
+            industry: ''
+          };
+          setSelectedStock(stock);
+          setShowStockPanel(true);
+        }
+      }
+    };
+    init();
   }, []);
 
   const handleSearch = (value: string) => {
     setSearchKeyword(value);
     fetchReports(1, value);
+  };
+
+  // 处理研报选择 - 自动联动股票数据
+  const handleReportSelect = (report: Report) => {
+    setSelectedReport(report);
+    
+    // 如果研报有股票代码，自动显示股票数据
+    if (report.company_code) {
+      // 提取纯数字代码（去掉括号内的内容）
+      let stockCode = report.company_code;
+      
+      // 处理类似 "600519.SH" 或 "600519" 的格式
+      if (stockCode.includes('.')) {
+        stockCode = stockCode.split('.')[0];
+      }
+      
+      // 处理类似 "贵州茅台(600519)" 的格式
+      const match = stockCode.match(/\d{6}/);
+      if (match) {
+        stockCode = match[0];
+      }
+      
+      const stock: Stock = {
+        code: stockCode,
+        name: report.company,
+        industry: ''
+      };
+      setSelectedStock(stock);
+      setShowStockPanel(true);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -153,7 +218,7 @@ export default function ReportList() {
         key={report.id}
         size="small"
         hoverable
-        onClick={() => setSelectedReport(report)}
+        onClick={() => handleReportSelect(report)}
         style={{
           marginBottom: 12,
           borderRadius: borderRadius.lg,
@@ -756,14 +821,63 @@ export default function ReportList() {
         </div>
       </div>
 
-      {/* 中间/右侧：研报详情 */}
+      {/* 中间：研报详情 */}
       <div style={{ 
         flex: 1, 
         overflow: 'hidden',
         background: colors.surface,
+        borderRight: showStockPanel ? `1px solid ${colors.border}` : 'none',
       }}>
         {renderReportDetail()}
       </div>
+
+      {/* 右侧：股票数据面板 */}
+      {showStockPanel && (
+        <div style={{ 
+          width: '360px', 
+          minWidth: '360px',
+          background: colors.background,
+          display: 'flex', 
+          flexDirection: 'column',
+          boxShadow: shadows.sm,
+        }}>
+          {/* 面板头部 */}
+          <div style={{ 
+            padding: '16px', 
+            borderBottom: `1px solid ${colors.border}`,
+            background: colors.surface,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <StockOutlined style={{ color: colors.primary, fontSize: '18px' }} />
+              <span style={{ fontWeight: 600, color: colors.textPrimary }}>股票数据</span>
+            </div>
+            <Button 
+              type="text" 
+              size="small"
+              onClick={() => setShowStockPanel(false)}
+              style={{ color: colors.textMuted }}
+            >
+              关闭
+            </Button>
+          </div>
+          
+          {/* 股票信息内容 */}
+          <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+            {selectedStock ? (
+              <StockInfoCard stockCode={selectedStock.code} />
+            ) : (
+              <Empty 
+                description="请选择股票查看详情" 
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                style={{ marginTop: '100px' }}
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       <UploadModal
         visible={uploadModalVisible}

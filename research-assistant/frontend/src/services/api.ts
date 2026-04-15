@@ -1,4 +1,4 @@
-import type { Report, ReportListResponse, UploadResponse, ApiResponse, ReportListParams } from '../types';
+import type { Report, ReportListResponse, UploadResponse, ApiResponse, ReportListParams, Stock, StockQuote, StockFinancial, StockFullData, StockSearchResponse, StockHistory } from '../types';
 
 const API_BASE = '/api/v1/agent';
 
@@ -96,7 +96,38 @@ export const aiApi = {
   },
 };
 
+// 股票数据服务
+export const stockApi = {
+  // 搜索股票
+  search: async (keyword: string): Promise<StockSearchResponse> => {
+    const params = new URLSearchParams();
+    if (keyword) params.set('q', keyword);
+    return request<StockSearchResponse>(`/stock/search?${params.toString()}`);
+  },
+
+  // 获取股票详情
+  getDetail: async (code: string): Promise<Stock> => {
+    return request<Stock>(`/stock/${code}`);
+  },
+
+  // 获取股票行情
+  getQuote: async (code: string): Promise<StockQuote> => {
+    return request<StockQuote>(`/stock/${code}/quote`);
+  },
+
+  // 获取财务指标
+  getFinancial: async (code: string): Promise<StockFinancial> => {
+    return request<StockFinancial>(`/stock/${code}/financial`);
+  },
+
+  // 获取完整股票数据（行情+财务）
+  getFullData: async (code: string): Promise<StockFullData> => {
+    return request<StockFullData>(`/stock/${code}/full`);
+  },
+};
+
 export default {
   report: reportApi,
   ai: aiApi,
+  stock: stockApi,
 };

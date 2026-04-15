@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Layout, Menu, Badge } from 'antd';
+import { Layout, Menu } from 'antd';
 import { FileTextOutlined, BarChartOutlined, SettingOutlined, LineChartOutlined } from '@ant-design/icons';
 import ReportList from './pages/ReportList';
 import Analysis from './pages/Analysis';

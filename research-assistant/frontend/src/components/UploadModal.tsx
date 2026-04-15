@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Upload, Button, message, List, Progress } from 'antd';
+import { Modal, Upload, Button, message, List } from 'antd';
 import { InboxOutlined, FilePdfOutlined, FileTextOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { reportApi } from '../services/api';
@@ -15,7 +15,7 @@ interface UploadModalProps {
 export default function UploadModal({ visible, onClose, onSuccess }: UploadModalProps) {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+
 
   const beforeUpload = (file: UploadFile) => {
     // 检查文件类型

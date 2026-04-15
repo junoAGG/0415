@@ -20,17 +20,13 @@ import {
 } from 'antd';
 import { 
   BarChartOutlined, 
-  QuestionCircleOutlined, 
-  HistoryOutlined,
   SendOutlined,
   FileTextOutlined,
   LoadingOutlined,
   CheckCircleOutlined,
   DiffOutlined,
   LineChartOutlined,
-  RobotOutlined,
-  BankOutlined,
-  ArrowRightOutlined
+  RobotOutlined
 } from '@ant-design/icons';
 import type { Report } from '../types';
 import type { AIQueryResponse, CompareResponse } from '../types/analysis';
@@ -423,7 +419,7 @@ export default function Analysis() {
                                 <Text type="secondary" style={{ fontSize: 12 }}>参考来源：</Text>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                                   {item.sources.map((source, idx) => (
-                                    <Tag key={idx} icon={<FileTextOutlined />} size="small">
+                                    <Tag key={idx} icon={<FileTextOutlined />}>
                                       {source.report_title}
                                     </Tag>
                                   ))}

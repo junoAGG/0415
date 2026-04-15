@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Badge, Tooltip, Spin } from 'antd';
-import { CheckCircleOutlined, DisconnectOutlined, RobotOutlined } from '@ant-design/icons';
+import { Tooltip, Spin } from 'antd';
+import { RobotOutlined } from '@ant-design/icons';
 import { aiApi } from '../services/api';
-import { colors, gradients, shadows, borderRadius } from '../styles/fintech-theme';
+import { colors, borderRadius } from '../styles/fintech-theme';
 
 interface AIStatusState {
   connected: boolean;
