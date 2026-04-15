@@ -94,8 +94,9 @@ export default function ReportList({ onDataChange, onOpenStockPanel }: ReportLis
   // 过滤研报
   const filteredReports = reports.filter(r => {
     const hitStatus = statusFilter === 'all' || r.status === statusFilter;
-    // source filter: 简单按ID模式判断
-    const isAuto = /^[0-9a-f]{8}-/.test(r.id);
+    // source filter: 使用source字段判断
+    const source = r.source || 'upload';
+    const isAuto = source === 'fetch' || source === 'ai';
     const hitSource = sourceFilter === 'all' ||
       (sourceFilter === 'auto' && isAuto) ||
       (sourceFilter === 'manual' && !isAuto);
@@ -251,13 +252,15 @@ export default function ReportList({ onDataChange, onOpenStockPanel }: ReportLis
     const solvency = r.solvency;
     const cashflowData = r.cashflow;
 
-    const isAuto = /^[0-9a-f]{8}-/.test(r.id);
+    const source = r.source || 'upload';
+    const isAuto = source === 'fetch' || source === 'ai';
+    const sourceText = source === 'ai' ? 'AI生成' : (isAuto ? '自动抓取' : '手工上传');
 
     return (
       <div className="detail-wrap">
         <div className="detail-hero">
           <div className="tag-row" style={{ marginBottom: 14 }}>
-            <span className={`chip ${isAuto ? 'auto' : 'upload'}`}>{isAuto ? '自动抓取' : '手工上传'}</span>
+            <span className={`chip ${isAuto ? 'auto' : 'upload'}`}>{sourceText}</span>
             <span className={`chip ${getStatusChipClass(r.status)}`}>{getStatusText(r.status)}</span>
             <span className="chip rating">{r.rating || '-'}</span>
           </div>
@@ -438,7 +441,7 @@ export default function ReportList({ onDataChange, onOpenStockPanel }: ReportLis
             <div className="info-box"><div className="meta-label">更新时间</div><div className="section-copy">{r.updated_at || '-'}</div></div>
             <div className="info-box"><div className="meta-label">状态说明</div><div className="section-copy">{r.status === 'failed' ? r.parse_error : '字段提取完成，可继续进入分析链路。'}</div></div>
             <div className="info-box"><div className="meta-label">文件类型</div><div className="section-copy">{(r.file_type || '').toUpperCase()}</div></div>
-            <div className="info-box"><div className="meta-label">来源</div><div className="section-copy">{isAuto ? '自动抓取 / 去重拉新' : '手工上传'}</div></div>
+            <div className="info-box"><div className="meta-label">来源</div><div className="section-copy">{source === 'ai' ? 'AI生成' : (isAuto ? '自动抓取 / 去重拉新' : '手工上传')}</div></div>
           </div>
         </div>
       </div>
@@ -674,7 +677,9 @@ export default function ReportList({ onDataChange, onOpenStockPanel }: ReportLis
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {filteredReports.map(r => {
                   const upside = calcUpside(r);
-                  const isAuto = /^[0-9a-f]{8}-/.test(r.id);
+                  const source = r.source || 'upload';
+                  const isAuto = source === 'fetch' || source === 'ai';
+                  const sourceLabel = source === 'ai' ? 'AI' : (isAuto ? '自动' : '上传');
                   return (
                     <article
                       key={r.id}
@@ -710,7 +715,7 @@ export default function ReportList({ onDataChange, onOpenStockPanel }: ReportLis
                         </button>
                       </div>
                       <div className="tag-row">
-                        <span className={`chip ${isAuto ? 'auto' : 'upload'}`}>{isAuto ? '自动' : '上传'}</span>
+                        <span className={`chip ${isAuto ? 'auto' : 'upload'}`}>{sourceLabel}</span>
                         <span className={`chip ${getStatusChipClass(r.status)}`}>{getStatusText(r.status)}</span>
                         <span className="chip rating">{r.rating || '-'}</span>
                       </div>

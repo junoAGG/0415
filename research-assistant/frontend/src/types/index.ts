@@ -78,6 +78,7 @@ export interface Report {
   file_size: number;
   status: 'pending' | 'parsing' | 'completed' | 'failed';
   parse_error: string;
+  source: 'upload' | 'fetch' | 'ai';
   created_at: string;
   updated_at: string;
   report_date?: string;

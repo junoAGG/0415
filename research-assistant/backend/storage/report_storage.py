@@ -50,6 +50,7 @@ class ReportStorage(JSONStorage):
             'file_size': report_data.get('file_size', 0),
             'status': report_data.get('status', 'pending'),  # pending, parsing, completed, failed
             'parse_error': report_data.get('parse_error', ''),
+            'source': report_data.get('source', 'upload'),  # upload, fetch, ai
             'created_at': self._now(),
             'updated_at': self._now(),
         }

@@ -103,6 +103,7 @@ report_base_model = agent_ns.model('ReportBase', {
     'file_type': fields.String(description='文件类型', example='pdf'),
     'file_size': fields.Integer(description='文件大小(字节)', example=1024000),
     'status': fields.String(description='状态', example='completed', enum=['pending', 'parsing', 'completed', 'failed']),
+    'source': fields.String(description='来源', example='upload', enum=['upload', 'fetch', 'ai']),
     'created_at': fields.String(description='创建时间', example='2024-01-15T10:30:00'),
     'updated_at': fields.String(description='更新时间', example='2024-01-15T10:35:00'),
 })
@@ -602,6 +603,7 @@ class ReportFetch(Resource):
             # 使用AI生成指定公司的研报
             report = report_fetcher.fetch_with_ai(company)
             if report:
+                report['source'] = 'ai'  # 标记为AI生成
                 # 保存到存储
                 saved = report_storage.create(report)
                 fetched_reports.append(saved)
@@ -613,6 +615,7 @@ class ReportFetch(Resource):
             # 批量抓取研报（去重拉新）
             reports = report_fetcher.fetch_reports(count, existing_companies)
             for report in reports:
+                report['source'] = 'fetch'  # 标记为自动抓取
                 # 保存到存储
                 saved = report_storage.create(report)
                 fetched_reports.append(saved)
