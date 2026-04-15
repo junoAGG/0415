@@ -1,0 +1,2479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>投研助手工作台 - 纯HTML原型</title>
+  <style>
+    :root {
+      --bg: #f3f8ff;
+      --bg-soft: #eef5ff;
+      --panel: rgba(255, 255, 255, 0.92);
+      --panel-strong: #ffffff;
+      --line: #d7e4f5;
+      --line-strong: #b9d0ea;
+      --text: #12233f;
+      --text-soft: #57708f;
+      --text-faint: #7d92ad;
+      --blue-1: #dff1ff;
+      --blue-2: #b7ddff;
+      --blue-3: #6eb6ff;
+      --blue-4: #2b6cb0;
+      --blue-5: #183b70;
+      --gold-1: #fff3cb;
+      --gold-2: #f4cf73;
+      --gold-3: #d3a63d;
+      --green: #18a16d;
+      --red: #cf4b5a;
+      --orange: #da8b2f;
+      --shadow-lg: 0 18px 44px rgba(24, 59, 112, 0.1);
+      --shadow-md: 0 10px 24px rgba(39, 76, 126, 0.08);
+      --radius-xl: 20px;
+      --radius-lg: 14px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+      --font-display: "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-body: "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: var(--font-body);
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(244, 207, 115, 0.25), transparent 28%),
+        radial-gradient(circle at top right, rgba(110, 182, 255, 0.22), transparent 24%),
+        linear-gradient(180deg, #f9fcff 0%, #f3f8ff 38%, #edf4fb 100%);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.3;
+      background-image:
+        linear-gradient(rgba(43, 108, 176, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(43, 108, 176, 0.035) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,0.6), transparent 85%);
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      background: none;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      padding: 12px;
+    }
+
+    .shell-card {
+      min-height: calc(100vh - 24px);
+      border: 1px solid rgba(185, 208, 234, 0.9);
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(18px);
+      border-radius: 22px;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .shell-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(130deg, rgba(244, 207, 115, 0.08), transparent 22%, transparent 78%, rgba(43, 108, 176, 0.05)),
+        linear-gradient(180deg, rgba(255,255,255,0.3), transparent 18%);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 16px;
+      background: linear-gradient(120deg, rgba(16, 43, 86, 0.95), rgba(31, 78, 143, 0.94));
+      color: #fff;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 180px;
+      flex: 0 0 auto;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      background:
+        linear-gradient(145deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04)),
+        linear-gradient(145deg, #f4cf73, #9ecfff);
+      box-shadow: 0 8px 18px rgba(0,0,0,0.16);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      inset: 7px;
+      border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.38);
+    }
+
+    .brand-mark::after {
+      inset: auto 6px 7px 6px;
+      height: 14px;
+      background: linear-gradient(90deg, rgba(24,161,109,0.95), rgba(244,207,115,0.92), rgba(207,75,90,0.92));
+      border: none;
+      border-radius: 6px;
+    }
+
+    .brand-copy h1 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1;
+    }
+
+    .brand-copy p {
+      margin: 4px 0 0;
+      color: rgba(255,255,255,0.72);
+      font-size: 12px;
+      letter-spacing: 0;
+      text-transform: none;
+      line-height: 1;
+    }
+
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 32px;
+      padding: 2px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      flex: 0 0 auto;
+    }
+
+    .nav-tab {
+      height: 28px;
+      padding: 0 12px;
+      border-radius: 8px;
+      color: rgba(255,255,255,0.7);
+      transition: 0.24s ease;
+      font-weight: 600;
+      font-size: 14px;
+      line-height: 28px;
+    }
+
+    .nav-tab.active {
+      color: var(--blue-5);
+      background: linear-gradient(145deg, #fff8dd, #dceeff);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+    }
+
+    .status-cluster {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      flex: 0 0 auto;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      font-size: 12px;
+      line-height: 32px;
+      color: rgba(255,255,255,0.88);
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #67f4b1;
+      box-shadow: 0 0 14px #67f4b1;
+    }
+
+    .main {
+      padding: 12px;
+    }
+
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .metric-card {
+      position: relative;
+      overflow: hidden;
+      min-height: 86px;
+      padding: 10px 14px 9px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(244,248,254,0.95));
+      border: 1px solid rgba(185, 208, 234, 0.9);
+      box-shadow: var(--shadow-md);
+    }
+
+    .metric-card::before {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--blue-3), var(--gold-2));
+    }
+
+    .metric-label {
+      color: var(--text-faint);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      margin-top: 8px;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    .metric-sub {
+      margin-top: 4px;
+      color: var(--text-soft);
+      font-size: 10px;
+      line-height: 1.5;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(185, 208, 234, 0.9);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-md);
+    }
+
+    .page {
+      display: none;
+      animation: fadeIn 0.28s ease;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      border-radius: 16px;
+    }
+
+    .toolbar-left,
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: nowrap;
+      min-width: 0;
+    }
+
+    .input,
+    .select,
+    .textarea {
+      width: 100%;
+      height: 32px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #f7fbff);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 0 12px;
+      line-height: 30px;
+      outline: none;
+      transition: 0.22s ease;
+    }
+
+    .input:focus,
+    .select:focus,
+    .textarea:focus {
+      border-color: var(--blue-3);
+      box-shadow: 0 0 0 4px rgba(110, 182, 255, 0.16);
+    }
+
+    .textarea {
+      height: auto;
+      padding: 8px 12px;
+      line-height: 1.6;
+    }
+
+    .input.search {
+      min-width: 320px;
+    }
+
+    .toolbar .select {
+      width: 150px;
+      min-width: 150px;
+    }
+
+    .toolbar .input,
+    .toolbar .select,
+    .toolbar .btn {
+      font-size: 14px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      height: 32px;
+      padding: 0 14px;
+      border-radius: 10px;
+      line-height: 32px;
+      font-weight: 700;
+      transition: 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      color: #fff;
+      background: linear-gradient(135deg, #2568b0, #163b71);
+      box-shadow: 0 8px 18px rgba(37, 104, 176, 0.2);
+    }
+
+    .btn.secondary {
+      color: var(--blue-5);
+      background: linear-gradient(135deg, #ffffff, #edf6ff);
+      border: 1px solid var(--line);
+    }
+
+    .btn.gold {
+      color: #6a4a00;
+      background: linear-gradient(135deg, #fff4ce, #f0c96d);
+      box-shadow: 0 8px 18px rgba(240, 201, 109, 0.22);
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .workspace-grid {
+      display: grid;
+      grid-template-columns: 320px minmax(720px, 1fr) 296px;
+      gap: 12px;
+      min-height: 700px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid rgba(185, 208, 234, 0.7);
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .panel-subtitle {
+      margin-top: 3px;
+      color: var(--text-soft);
+      font-size: 11px;
+    }
+
+    .scroll-body {
+      height: calc(100% - 72px);
+      overflow: auto;
+      padding: 12px;
+    }
+
+    .report-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .report-card {
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(245,250,255,0.95));
+      transition: 0.22s ease;
+      cursor: pointer;
+    }
+
+    .report-card.active {
+      border-color: #7ebef8;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.98), rgba(235,246,255,0.98)),
+        linear-gradient(135deg, rgba(240,201,109,0.12), transparent 50%);
+      box-shadow: 0 10px 20px rgba(31, 78, 143, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .report-topline,
+    .detail-meta-grid,
+    .action-row,
+    .kpi-grid,
+    .forecast-grid,
+    .compare-grid,
+    .history-list,
+    .tag-row,
+    .source-list,
+    .focus-list,
+    .mini-metrics {
+      display: grid;
+      gap: 8px;
+    }
+
+    .report-topline {
+      grid-template-columns: 1fr auto;
+      align-items: start;
+      margin-bottom: 8px;
+    }
+
+    .report-title {
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.45;
+      margin-bottom: 6px;
+    }
+
+    .report-desc,
+    .muted {
+      color: var(--text-soft);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .tag-row {
+      grid-template-columns: repeat(3, max-content);
+      align-items: center;
+      margin-bottom: 8px;
+      justify-content: start;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+
+    .chip.auto {
+      color: #6f4d00;
+      background: linear-gradient(135deg, #fff4d5, #f6dc8f);
+    }
+
+    .chip.completed { color: #116f50; background: #def5eb; border-color: #a4e1c5; }
+    .chip.pending { color: #875600; background: #fff1d6; border-color: #f3d08b; }
+    .chip.failed { color: #a42a3a; background: #ffe0e5; border-color: #f0a8b5; }
+    .chip.parsing { color: #185da7; background: #e0f0ff; border-color: #9ecfff; }
+    .chip.rating { color: #173a6f; background: #e6f3ff; border-color: #bddcff; }
+
+    .report-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .tiny-btn {
+      flex: 1;
+      padding: 7px 8px;
+      border-radius: 9px;
+      background: #f7fbff;
+      border: 1px solid var(--line);
+      color: var(--text-soft);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .tiny-btn:hover {
+      border-color: var(--blue-3);
+      color: var(--blue-5);
+    }
+
+    .detail-wrap {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .detail-hero {
+      padding: 16px 18px 14px;
+      border-bottom: 1px solid rgba(185, 208, 234, 0.75);
+      background:
+        radial-gradient(circle at right top, rgba(244,207,115,0.2), transparent 28%),
+        linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,247,255,0.95));
+    }
+
+    .detail-title {
+      margin: 0 0 10px;
+      font-family: var(--font-display);
+      font-size: 24px;
+      line-height: 1.18;
+      letter-spacing: -0.03em;
+    }
+
+    .detail-meta-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .meta-box,
+    .info-box,
+    .forecast-box,
+    .compare-box,
+    .history-item,
+    .chat-item,
+    .source-item,
+    .brief-box {
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,251,255,0.96));
+    }
+
+    .meta-label,
+    .section-kicker {
+      color: var(--text-faint);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 8px;
+    }
+
+    .meta-value {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px 0;
+      border-bottom: 1px solid rgba(185, 208, 234, 0.7);
+      background: rgba(255,255,255,0.74);
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      padding: 10px 12px;
+      border-radius: 10px 10px 0 0;
+      color: var(--text-soft);
+      font-weight: 700;
+      position: relative;
+      white-space: nowrap;
+    }
+
+    .tab-btn.active {
+      color: var(--blue-5);
+      background: linear-gradient(180deg, #ffffff, #f6fbff);
+      border: 1px solid rgba(185, 208, 234, 0.9);
+      border-bottom-color: #fff;
+    }
+
+    .tab-panel {
+      display: none;
+      padding: 14px 16px 16px;
+      overflow: auto;
+      height: 100%;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .section-block + .section-block {
+      margin-top: 14px;
+    }
+
+    .section-title {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .section-copy {
+      margin: 0;
+      color: var(--text-soft);
+      line-height: 1.8;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+
+    .forecast-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .forecast-value {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-top: 8px;
+    }
+
+    .side-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .mini-metrics {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .mini-card {
+      padding: 10px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #ffffff, #f6fbff);
+      border: 1px solid var(--line);
+    }
+
+    .mini-card strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 18px;
+    }
+
+    .stock-overview {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .stock-kpi {
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #f6fbff);
+    }
+
+    .stock-kpi strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 16px;
+      color: var(--blue-5);
+    }
+
+    .chart-card {
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #f7fbff);
+    }
+
+    .chart-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .chart-head h4 {
+      margin: 0;
+      font-size: 12px;
+    }
+
+    .chart-head span {
+      color: var(--text-faint);
+      font-size: 10px;
+    }
+
+    .chart-svg {
+      width: 100%;
+      height: 128px;
+      display: block;
+    }
+
+    .chart-footnote {
+      margin-top: 6px;
+      color: var(--text-soft);
+      font-size: 10px;
+      line-height: 1.5;
+    }
+
+    .focus-list {
+      grid-template-columns: 1fr;
+    }
+
+    .focus-item {
+      padding: 10px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #fff, #f7fbff);
+      border: 1px solid var(--line);
+    }
+
+    .focus-item h4 {
+      margin: 0 0 8px;
+      font-size: 12px;
+    }
+
+    .analysis-layout {
+      display: grid;
+      grid-template-columns: 320px minmax(720px, 1fr) 280px;
+      gap: 12px;
+      min-height: 700px;
+    }
+
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .mode-btn {
+      padding: 11px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #f7fbff);
+      color: var(--text-soft);
+      font-weight: 700;
+    }
+
+    .mode-btn.active {
+      background: linear-gradient(145deg, #ffffff, #e2f0ff);
+      color: var(--blue-5);
+      border-color: var(--blue-3);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+    }
+
+    .report-selector {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .selector-item {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: linear-gradient(180deg, #ffffff, #f8fbff);
+      cursor: pointer;
+    }
+
+    .selector-item.selected {
+      border-color: var(--blue-3);
+      background: linear-gradient(180deg, #ffffff, #edf7ff);
+      box-shadow: 0 8px 16px rgba(43, 108, 176, 0.1);
+    }
+
+    .selector-item input {
+      margin-top: 2px;
+    }
+
+    .compare-grid {
+      grid-template-columns: 1fr 1fr;
+      margin-top: 12px;
+    }
+
+    .compare-box h4,
+    .brief-box h4,
+    .history-item h4,
+    .source-item h4 {
+      margin: 0 0 10px;
+      font-size: 14px;
+    }
+
+    .bullet-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--text-soft);
+      line-height: 1.8;
+      font-size: 12px;
+    }
+
+    .chat-stream {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px;
+      height: calc(100% - 138px);
+      overflow: auto;
+    }
+
+    .chat-item {
+      max-width: 88%;
+    }
+
+    .chat-item.user {
+      margin-left: auto;
+      background: linear-gradient(140deg, #1f4f8f, #2f72bd);
+      color: #fff;
+      border-color: rgba(32, 90, 163, 0.6);
+    }
+
+    .chat-item.ai {
+      background: linear-gradient(180deg, #ffffff, #f7fbff);
+    }
+
+    .chat-item .meta-label {
+      margin-bottom: 6px;
+    }
+
+    .chat-input {
+      padding: 12px 14px 14px;
+      border-top: 1px solid rgba(185, 208, 234, 0.7);
+      background: rgba(255,255,255,0.86);
+    }
+
+    .chat-input-row {
+      display: grid;
+      grid-template-columns: 1fr 120px;
+      gap: 8px;
+    }
+
+    .history-list {
+      grid-template-columns: 1fr;
+      padding: 12px;
+    }
+
+    .history-item small {
+      color: var(--text-faint);
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .source-list {
+      grid-template-columns: 1fr;
+      margin-top: 12px;
+    }
+
+    .source-item {
+      border-left: 4px solid var(--gold-2);
+    }
+
+    .empty-state {
+      display: grid;
+      place-items: center;
+      min-height: 340px;
+      text-align: center;
+      color: var(--text-soft);
+      padding: 24px;
+    }
+
+    .empty-state h3 {
+      margin: 0 0 8px;
+      font-family: var(--font-display);
+      font-size: 28px;
+    }
+
+    .tooltip {
+      position: fixed;
+      z-index: 20;
+      max-width: 280px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(18, 35, 63, 0.94);
+      color: #fff;
+      font-size: 12px;
+      line-height: 1.6;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.22);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: 0.14s ease;
+    }
+
+    .tooltip.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    [data-tooltip] {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 1680px) {
+      .workspace-grid {
+        grid-template-columns: 290px minmax(620px, 1fr) 260px;
+      }
+
+      .analysis-layout {
+        grid-template-columns: 290px minmax(620px, 1fr) 250px;
+      }
+    }
+
+    @media (max-width: 1360px) {
+      .summary-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .workspace-grid,
+      .analysis-layout {
+        grid-template-columns: 320px 1fr;
+      }
+
+      .workspace-grid > .panel:last-child,
+      .analysis-layout > .panel:last-child {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 980px) {
+      .app-shell {
+        padding: 10px;
+      }
+
+      .shell-card {
+        min-height: calc(100vh - 20px);
+        border-radius: 18px;
+      }
+
+      .topbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .topbar-left {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+
+      .brand {
+        min-width: 0;
+      }
+
+      .nav-tabs,
+      .status-cluster {
+        justify-content: flex-start;
+      }
+
+      .summary-strip,
+      .workspace-grid,
+      .analysis-layout,
+      .detail-meta-grid,
+      .forecast-grid,
+      .compare-grid,
+      .mini-metrics,
+      .chat-input-row {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+      }
+
+      .toolbar-left,
+      .toolbar-right {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+
+      .input.search {
+        min-width: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="shell-card">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="brand">
+            <div class="brand-mark"></div>
+            <div class="brand-copy">
+              <h1>智能研报</h1>
+              <p>AI驱动的投研工作台</p>
+            </div>
+          </div>
+          <nav class="nav-tabs">
+            <button class="nav-tab active" data-page-target="reportsPage">研报管理</button>
+            <button class="nav-tab" data-page-target="analysisPage">智能分析</button>
+          </nav>
+        </div>
+        <div class="status-cluster">
+          <div class="status-pill"><span class="dot"></span>AI状态 在线 · 百炼API · qwen-turbo</div>
+          <div class="status-pill">今日抓取 5 / 去重拉新 100%</div>
+          <div class="status-pill">知识库覆盖 12 家核心公司</div>
+        </div>
+      </header>
+
+      <main class="main">
+        <section class="summary-strip">
+          <div class="metric-card">
+            <div class="metric-label">在库研报</div>
+            <div class="metric-value" id="metricTotalReports">0</div>
+            <div class="metric-sub">含自动抓取与手工上传，支持状态追踪</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">已完成解析</div>
+            <div class="metric-value" id="metricCompleted">0</div>
+            <div class="metric-sub">可直接进入对比分析与问答链路</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">买入/增持占比</div>
+            <div class="metric-value" id="metricPositiveRatio">0%</div>
+            <div class="metric-sub">反映当前样本中主流卖方态度</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">平均目标涨幅</div>
+            <div class="metric-value" id="metricAvgUpside">0%</div>
+            <div class="metric-sub">基于目标价与现价计算的样本均值</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">关注行业</div>
+            <div class="metric-value" id="metricTopIndustry">-</div>
+            <div class="metric-sub">根据样本覆盖频次自动聚合</div>
+          </div>
+        </section>
+
+        <section class="page active" id="reportsPage">
+          <div class="panel toolbar">
+            <div class="toolbar-left">
+              <input class="input search" id="reportSearch" placeholder="搜索标题 / 公司 / 代码 / 券商" />
+              <select class="select" id="statusFilter">
+                <option value="all">全部状态</option>
+                <option value="completed">已完成</option>
+                <option value="pending">待解析</option>
+                <option value="parsing">解析中</option>
+                <option value="failed">解析失败</option>
+              </select>
+              <select class="select" id="sourceFilter">
+                <option value="all">全部来源</option>
+                <option value="auto">自动抓取</option>
+                <option value="manual">手工上传</option>
+              </select>
+            </div>
+            <div class="toolbar-right">
+              <button class="btn secondary" id="resetFiltersBtn">重置</button>
+              <button class="btn gold" id="fetchBtn">抓取研报</button>
+              <button class="btn primary" id="uploadBtn">上传研报</button>
+            </div>
+          </div>
+
+          <div class="workspace-grid">
+            <section class="panel" style="height: 720px;">
+              <div class="panel-header">
+                <div>
+                  <h3 class="panel-title">研报池</h3>
+                  <div class="panel-subtitle">左侧筛选 + 快速动作，贴近实际投研浏览习惯</div>
+                </div>
+                <strong id="reportListCount">0</strong>
+              </div>
+              <div class="scroll-body">
+                <div class="report-list" id="reportList"></div>
+              </div>
+            </section>
+
+            <section class="panel" style="height: 720px;">
+              <div class="detail-wrap" id="detailWrap"></div>
+            </section>
+
+            <aside class="panel" style="height: 720px;">
+              <div class="panel-header">
+                <div>
+                  <h3 class="panel-title">股票数据</h3>
+                  <div class="panel-subtitle">跟随当前研报切换，展示行情、成交与估值概览</div>
+                </div>
+              </div>
+              <div class="scroll-body side-stack" id="stockSidebar"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="page" id="analysisPage">
+          <div class="panel toolbar">
+            <div class="toolbar-left">
+              <strong>智能分析</strong>
+              <span class="muted">同样使用 mock 数据，覆盖对比分析与 AI 问答两条主流程</span>
+            </div>
+            <div class="toolbar-right">
+              <button class="btn secondary" id="selectAllAnalysisBtn">全选已完成研报</button>
+              <button class="btn primary" id="runCompareBtn">开始对比</button>
+            </div>
+          </div>
+
+          <div class="analysis-layout">
+            <section class="panel" style="height: 720px;">
+              <div class="panel-header">
+                <div>
+                  <h3 class="panel-title">分析配置</h3>
+                  <div class="panel-subtitle">模式切换、研报选择、对比维度配置</div>
+                </div>
+              </div>
+              <div class="scroll-body">
+                <div class="mode-switch">
+                  <button class="mode-btn active" data-mode-target="compare">研报对比</button>
+                  <button class="mode-btn" data-mode-target="qa">AI问答</button>
+                </div>
+                <div id="compareControls">
+                  <div class="section-block">
+                    <div class="section-kicker">对比维度</div>
+                    <select class="select" id="compareType">
+                      <option value="company">公司对比</option>
+                      <option value="industry">行业对比</option>
+                      <option value="custom">自定义对比</option>
+                    </select>
+                  </div>
+                  <div class="section-block">
+                    <div class="section-kicker">已选研报</div>
+                    <p class="section-copy" id="compareSelectionHint">请至少选择 2 份已完成研报进行对比分析。</p>
+                  </div>
+                </div>
+                <div id="qaControls" style="display:none;">
+                  <div class="section-block">
+                    <div class="section-kicker">参考范围</div>
+                    <p class="section-copy">不选时默认使用全部已完成研报；已选时仅基于所选内容回答。</p>
+                  </div>
+                </div>
+                <div class="report-selector" id="analysisReportSelector"></div>
+              </div>
+            </section>
+
+            <section class="panel" style="height: 720px;" id="analysisMain"></section>
+
+            <aside class="panel" style="height: 720px;">
+              <div class="panel-header">
+                <div>
+                  <h3 class="panel-title">分析历史</h3>
+                  <div class="panel-subtitle">保留最近对比与问答操作痕迹</div>
+                </div>
+              </div>
+              <div class="scroll-body">
+                <div class="history-list" id="historyList"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    const mockReports = [
+      {
+        id: "rpt_auto_001",
+        title: "贵州茅台(600519)年报前瞻：批价韧性与渠道治理并进，高端白酒龙头价值重估",
+        company: "贵州茅台",
+        company_code: "600519.SH",
+        industry: "白酒",
+        broker: "中信证券",
+        analyst: "张晓明",
+        rating: "买入",
+        target_price: 1988,
+        current_price: 1716,
+        core_views: "1. 飞天批价维持高位，渠道库存可控，全年收入确定性仍强。\n2. 非标与系列酒产品结构改善，吨价与利润率具备支撑。\n3. 现金流与分红能力突出，适合作为机构核心配置底仓。",
+        financial_forecast: {
+          revenue_2024: 1738.6,
+          revenue_2025: 1915.2,
+          net_profit_2024: 872.4,
+          net_profit_2025: 963.7,
+          eps_2024: 69.4,
+          eps_2025: 76.5
+        },
+        summary: {
+          key_points: "批价稳定、直营放量、费用率平稳、现金流优异。",
+          investment_highlights: "高端白酒供需偏紧格局未变，品牌势能与渠道掌控力构筑长期壁垒。",
+          risk_warnings: "宏观消费波动、批价下行、政策扰动。"
+        },
+        key_abstract: "短期看批价和节奏，中期看直营与系列酒结构优化，长期仍是高端消费稀缺资产。",
+        content: "公司具备行业最强品牌溢价和价格带控制力。2024年在宴席、商务及礼赠场景修复下，主产品批价保持韧性。直营渠道增速相对更快，系列酒结构上移推动利润质量提升。我们预计未来两年收入维持双位数增长，利润弹性优于收入弹性。",
+        file_path: "uploads/600519_SH_20260415.pdf",
+        file_type: "pdf",
+        file_size: 3280000,
+        status: "completed",
+        parse_error: "",
+        created_at: "2026-04-15T09:12:00",
+        updated_at: "2026-04-15T09:16:00",
+        report_date: "2026-04-15",
+        source: "auto",
+        auto: true
+      },
+      {
+        id: "rpt_auto_002",
+        title: "宁德时代(300750)季度点评：海外订单修复与储能放量共振，盈利底部明确",
+        company: "宁德时代",
+        company_code: "300750.SZ",
+        industry: "新能源",
+        broker: "中金公司",
+        analyst: "陈敏",
+        rating: "增持",
+        target_price: 238,
+        current_price: 201,
+        core_views: "1. 动力电池份额维持领先，海外客户结构改善。\n2. 储能业务进入规模化收获阶段，毛利率波动趋稳。\n3. 锂价回落后盈利底部更加明确，估值修复空间提升。",
+        financial_forecast: {
+          revenue_2024: 4021.8,
+          revenue_2025: 4499.2,
+          net_profit_2024: 522.7,
+          net_profit_2025: 618.4,
+          eps_2024: 11.8,
+          eps_2025: 13.9
+        },
+        summary: {
+          key_points: "海外订单修复、储能放量、原材料价格企稳。",
+          investment_highlights: "盈利能力下行周期接近尾声，现金流和研发投入仍保持行业领先。",
+          risk_warnings: "海外贸易环境、价格战、技术替代。"
+        },
+        key_abstract: "估值压制主要来自周期悲观预期，但公司在全球产业链中的议价优势并未削弱。",
+        content: "我们认为，公司动力与储能双轮驱动逻辑不变。短期市场仍关注单Wh盈利，但中长期决定因素仍是全球份额、客户粘性与技术迭代效率。当前估值已较充分反映保守预期。",
+        file_path: "uploads/300750_SZ_20260414.pdf",
+        file_type: "pdf",
+        file_size: 2640000,
+        status: "completed",
+        parse_error: "",
+        created_at: "2026-04-14T14:18:00",
+        updated_at: "2026-04-14T14:22:00",
+        report_date: "2026-04-14",
+        source: "auto",
+        auto: true
+      },
+      {
+        id: "rpt_manual_003",
+        title: "比亚迪(002594)深度研究：出海与高端化双击，汽车平台能力持续兑现",
+        company: "比亚迪",
+        company_code: "002594.SZ",
+        industry: "汽车",
+        broker: "华泰证券",
+        analyst: "李华",
+        rating: "买入",
+        target_price: 332,
+        current_price: 278,
+        core_views: "1. 海外销量进入加速阶段，泰国、巴西与欧洲市场拓展顺利。\n2. DM与纯电双平台并行，品牌矩阵覆盖更广价格带。\n3. 垂直整合能力持续兑现，规模效应支撑盈利中枢。",
+        financial_forecast: {
+          revenue_2024: 8512.0,
+          revenue_2025: 9630.5,
+          net_profit_2024: 431.2,
+          net_profit_2025: 548.6,
+          eps_2024: 14.6,
+          eps_2025: 18.1
+        },
+        summary: {
+          key_points: "出口提速、高端化、规模优势、垂直整合。",
+          investment_highlights: "多品牌策略逐步成型，汽车业务和电子业务协同增强。",
+          risk_warnings: "价格竞争、海外渠道建设不及预期。"
+        },
+        key_abstract: "公司已从单一销量逻辑切换至全球品牌与平台能力溢价逻辑。",
+        content: "比亚迪在国内新能源市场已建立规模优势，当前增量更多来自海外市场和产品高端化。公司在三电、平台和供应链协同上的深度整合，令其在价格竞争中仍保有利润弹性。",
+        file_path: "uploads/byd_deep_dive_apr.html",
+        file_type: "html",
+        file_size: 928000,
+        status: "completed",
+        parse_error: "",
+        created_at: "2026-04-13T11:10:00",
+        updated_at: "2026-04-13T11:14:00",
+        report_date: "2026-04-13",
+        source: "manual",
+        auto: false
+      },
+      {
+        id: "rpt_auto_004",
+        title: "招商银行(600036)银行业跟踪：息差承压趋缓，财富管理修复带来估值缓冲",
+        company: "招商银行",
+        company_code: "600036.SH",
+        industry: "银行",
+        broker: "国泰君安",
+        analyst: "周丽",
+        rating: "推荐",
+        target_price: 45.8,
+        current_price: 39.6,
+        core_views: "1. 零售优势仍稳固，AUM恢复改善手续费收入弹性。\n2. 资产质量压力可控，不良生成率维持低位。\n3. 估值仍处低位，股息率与基本面形成防守属性。",
+        financial_forecast: {
+          revenue_2024: 3481.2,
+          revenue_2025: 3616.9,
+          net_profit_2024: 1517.6,
+          net_profit_2025: 1596.2,
+          eps_2024: 6.02,
+          eps_2025: 6.31
+        },
+        summary: {
+          key_points: "零售优势、资产质量稳定、股息率防御。",
+          investment_highlights: "财富管理与对公协同平衡，龙头银行估值折价具备修复空间。",
+          risk_warnings: "息差下行、地产链风险传导。"
+        },
+        key_abstract: "更适合稳健配置与组合底仓，而非高弹性交易。",
+        content: "在低利率环境下，招商银行的核心看点在于零售客群粘性和财富管理恢复节奏。即便息差仍承压，资产质量与资本充足率保证了其估值的下限。",
+        file_path: "uploads/600036_SH_20260412.pdf",
+        file_type: "pdf",
+        file_size: 1870000,
+        status: "completed",
+        parse_error: "",
+        created_at: "2026-04-12T16:05:00",
+        updated_at: "2026-04-12T16:08:00",
+        report_date: "2026-04-12",
+        source: "auto",
+        auto: true
+      },
+      {
+        id: "rpt_manual_005",
+        title: "中芯国际(00981)景气观察：先进制程扩产提速，但资本开支与地缘变量需跟踪",
+        company: "中芯国际",
+        company_code: "00981.HK",
+        industry: "半导体",
+        broker: "海通证券",
+        analyst: "王强",
+        rating: "中性",
+        target_price: 19.6,
+        current_price: 18.9,
+        core_views: "1. 国产替代趋势持续，但先进制程扩产节奏仍受多因素扰动。\n2. 资本开支维持高位，对现金流形成阶段性压力。\n3. 行业景气有修复，但估值已部分反映预期。",
+        financial_forecast: {
+          revenue_2024: 608.2,
+          revenue_2025: 671.4,
+          net_profit_2024: 54.1,
+          net_profit_2025: 61.5,
+          eps_2024: 0.68,
+          eps_2025: 0.77
+        },
+        summary: {
+          key_points: "国产替代、先进制程、资本开支、地缘变量。",
+          investment_highlights: "产业战略地位明确，但盈利兑现节奏仍需时间。",
+          risk_warnings: "制裁升级、扩产不及预期、行业价格波动。"
+        },
+        key_abstract: "中长期逻辑明确，短期更适合事件驱动和景气跟踪，而非单纯估值扩张。",
+        content: "公司作为国内晶圆代工核心标的，行业地位与战略价值突出。当前最关键的观察变量是产能利用率、先进制程良率以及资本开支与盈利兑现的匹配关系。",
+        file_path: "uploads/smic_tracking_note.pdf",
+        file_type: "pdf",
+        file_size: 1560000,
+        status: "completed",
+        parse_error: "",
+        created_at: "2026-04-11T10:20:00",
+        updated_at: "2026-04-11T10:27:00",
+        report_date: "2026-04-11",
+        source: "manual",
+        auto: false
+      },
+      {
+        id: "rpt_auto_006",
+        title: "药明康德(603259)业绩速览：订单恢复尚待验证，估值吸引力提升",
+        company: "药明康德",
+        company_code: "603259.SH",
+        industry: "医药",
+        broker: "广发证券",
+        analyst: "刘芳",
+        rating: "谨慎增持",
+        target_price: 58.0,
+        current_price: 50.4,
+        core_views: "1. 海外订单与政策扰动仍是核心变量。\n2. 一体化CRDMO平台仍具备中长期竞争力。\n3. 短期经营修复节奏需要更多订单数据确认。",
+        financial_forecast: {
+          revenue_2024: 415.5,
+          revenue_2025: 448.3,
+          net_profit_2024: 87.4,
+          net_profit_2025: 96.1,
+          eps_2024: 2.63,
+          eps_2025: 2.88
+        },
+        summary: {
+          key_points: "订单扰动、平台优势、估值回落。",
+          investment_highlights: "若外部环境缓和，公司具备明显业绩弹性。",
+          risk_warnings: "海外监管、客户推迟下单、行业竞争。"
+        },
+        key_abstract: "当前位置更多体现赔率，但胜率修复还需要基本面配合。",
+        content: "短期市场关注政策与订单的不确定性，但公司平台化能力并未明显削弱。若订单增速回正，估值修复弹性可观。",
+        file_path: "uploads/603259_SH_20260410.pdf",
+        file_type: "pdf",
+        file_size: 2310000,
+        status: "parsing",
+        parse_error: "",
+        created_at: "2026-04-10T15:08:00",
+        updated_at: "2026-04-10T15:18:00",
+        report_date: "2026-04-10",
+        source: "auto",
+        auto: true
+      },
+      {
+        id: "rpt_manual_007",
+        title: "腾讯控股(00700)广告与游戏双修复，视频号变现效率仍是关键锚点",
+        company: "腾讯控股",
+        company_code: "00700.HK",
+        industry: "互联网",
+        broker: "招商证券",
+        analyst: "孙伟",
+        rating: "买入",
+        target_price: 436,
+        current_price: 368,
+        core_views: "1. 广告恢复韧性强于市场预期，视频号商业化仍有空间。\n2. 游戏业务产品周期改善，海外布局持续推进。\n3. 回购与股东回报增强估值支撑。",
+        financial_forecast: {
+          revenue_2024: 6852.1,
+          revenue_2025: 7410.6,
+          net_profit_2024: 1876.4,
+          net_profit_2025: 2062.2,
+          eps_2024: 19.7,
+          eps_2025: 21.8
+        },
+        summary: {
+          key_points: "广告修复、视频号、游戏周期、回购。",
+          investment_highlights: "现金流充足且业务结构稳健，互联网龙头估值修复确定性较高。",
+          risk_warnings: "游戏版号、广告景气波动、监管不确定性。"
+        },
+        key_abstract: "估值修复的核心是广告和游戏双线确认，而不是单一题材刺激。",
+        content: "腾讯的中长期价值来自高现金流平台能力和多业务协同。短期催化主要在广告复苏节奏、视频号货币化效率及新游上线表现。",
+        file_path: "uploads/tencent_ad_game_note.html",
+        file_type: "html",
+        file_size: 740000,
+        status: "completed",
+        parse_error: "",
+        created_at: "2026-04-09T13:26:00",
+        updated_at: "2026-04-09T13:35:00",
+        report_date: "2026-04-09",
+        source: "manual",
+        auto: false
+      },
+      {
+        id: "rpt_manual_008",
+        title: "海康威视(002415)渠道调研纪要：中小B端复苏偏慢，AIoT落地节奏需继续观察",
+        company: "海康威视",
+        company_code: "002415.SZ",
+        industry: "电子",
+        broker: "兴业证券",
+        analyst: "郑洁",
+        rating: "中性",
+        target_price: 33.0,
+        current_price: 31.8,
+        core_views: "1. 传统安防需求复苏仍偏缓，中小B端恢复不均衡。\n2. AIoT方向具备长期潜力，但落地和收入转化节奏较慢。\n3. 短期估值缺乏强催化。",
+        financial_forecast: {
+          revenue_2024: 972.4,
+          revenue_2025: 1033.8,
+          net_profit_2024: 156.2,
+          net_profit_2025: 169.5,
+          eps_2024: 1.69,
+          eps_2025: 1.83
+        },
+        summary: {
+          key_points: "传统安防偏弱、AIoT兑现慢、渠道修复不均衡。",
+          investment_highlights: "现金流稳健，适合跟踪需求改善信号。",
+          risk_warnings: "项目制需求延后、海外竞争。"
+        },
+        key_abstract: "偏跟踪型标的，核心是等待需求改善信号而不是抢跑估值扩张。",
+        content: "公司在安防和AIoT领域仍有优势，但当前市场更希望看到订单和收入的实际改善。渠道反馈表明下游节奏仍有分化。",
+        file_path: "uploads/hikvision_field_note.pdf",
+        file_type: "pdf",
+        file_size: 1320000,
+        status: "failed",
+        parse_error: "HTML结构字段缺失，摘要页未成功提取。",
+        created_at: "2026-04-08T09:50:00",
+        updated_at: "2026-04-08T10:03:00",
+        report_date: "2026-04-08",
+        source: "manual",
+        auto: false
+      }
+    ];
+
+    const compareTemplates = {
+      company: {
+        summary: "本次公司对比显示，样本中高景气赛道标的更依赖海外扩张与产品结构升级带动估值修复；消费与金融类标的则更强调现金流、品牌与分红确定性。整体上，市场给予买入评级的样本普遍具备“盈利质量 + 经营韧性 + 中期催化”三重支撑。",
+        similarities: [
+          "多数样本均强调行业龙头地位与中长期竞争壁垒，而非单一季度波动。",
+          "目标价上行空间主要建立在盈利兑现与估值修复并存的假设之上。",
+          "卖方普遍关注现金流、费用率和结构优化，而不是只看收入增速。 "
+        ],
+        differences: [
+          "消费与银行更偏防御配置，新能源、汽车、互联网更偏景气与弹性逻辑。",
+          "半导体与医药样本的不确定性主要来自外部环境，而白酒与银行更多受国内需求与政策影响。",
+          "对成长股的分歧集中在盈利底部是否已确认，对价值股的分歧集中在估值修复空间是否足够。 "
+        ],
+        recommendations: [
+          "若以组合稳健性为优先，优先配置高现金流龙头与低估值防御资产。",
+          "若以弹性为优先，可关注新能源、汽车、互联网中基本面已出现改善验证的标的。",
+          "对于中性或谨慎增持样本，建议继续跟踪订单、批价、资本开支或政策变量。 "
+        ]
+      },
+      industry: {
+        summary: "行业维度上，当前样本呈现典型的“高景气制造修复 + 消费龙头防守 + 金融底仓稳定”三层结构。行业判断已经从简单赛道偏好，转向对盈利兑现节奏和估值性价比的平衡。",
+        similarities: [
+          "各行业样本都在强调龙头份额集中和竞争格局优化。",
+          "研究框架都从需求、盈利、估值三个层面展开。",
+          "市场对行业景气的判断普遍带有“修复但不冒进”的谨慎色彩。 "
+        ],
+        differences: [
+          "白酒、银行更重视确定性，新能源、汽车、互联网更重视修复弹性。",
+          "医药与半导体更依赖外部政策环境的边际改善。",
+          "电子和安防领域更缺乏立即兑现的短期催化。 "
+        ],
+        recommendations: [
+          "行业配置建议采取核心防御 + 景气进攻的双层结构。",
+          "组合中应保留一定高股息或稳定现金流资产对冲波动。",
+          "对受政策或海外影响较大的行业维持跟踪，不宜过度提前交易。 "
+        ]
+      },
+      custom: {
+        summary: "自定义维度下，本轮样本最值得关注的核心变量是“盈利质量是否在改善”。这比短期收入增速更能解释评级与目标价的差异，也更贴近实际投研决策逻辑。",
+        similarities: [
+          "所有样本都在尝试证明其盈利中枢具备稳定性或改善可能。",
+          "多数研究都将经营韧性作为估值底线的关键支撑。",
+          "核心观点通常围绕渠道、订单、份额、产品结构展开。 "
+        ],
+        differences: [
+          "有的样本依赖品牌与现金流，有的样本依赖技术与海外扩张。",
+          "部分标的属于赔率改善逻辑，部分属于胜率与赔率兼具逻辑。",
+          "市场对短期催化的要求在不同行业差异明显。 "
+        ],
+        recommendations: [
+          "优先挑选盈利质量与估值错配最明显的标的进入重点跟踪池。",
+          "对于催化尚未兑现但赔率较高的标的，适合放入观察池而非立即重仓。",
+          "建议将对比结论同步到问答模块，用于后续专题追问。 "
+        ]
+      }
+    };
+
+    const qaAnswers = [
+      {
+        keywords: ["茅台", "五粮液", "白酒"],
+        answer: "当前样本中，贵州茅台更偏“高端稀缺资产 + 现金流确定性”逻辑，防御属性更强；若加入五粮液这类次高端龙头，比较重点会落在批价稳定度、渠道库存和结构升级弹性上。若你的目标是组合底仓，茅台优先级更高；若追求阶段性估值修复，次高端弹性会更大。",
+      },
+      {
+        keywords: ["新能源", "宁德时代", "比亚迪"],
+        answer: "新能源车链条里，宁德时代代表上游核心零部件平台能力，比亚迪代表整车与垂直整合能力。前者更适合跟踪盈利底部和储能放量，后者更适合跟踪出口与高端化兑现。如果担心行业价格战，当前更应优先看利润率修复而不是销量增速。 ",
+      },
+      {
+        keywords: ["腾讯", "互联网", "广告", "游戏"],
+        answer: "腾讯的关键不在于单一业务，而在于广告、游戏、视频号商业化和股东回报的组合拳。若广告恢复和新游周期兑现，估值修复会较顺；若你更关注下行保护，腾讯在互联网样本里仍属于现金流质量最稳的一档。",
+      }
+    ];
+
+    const state = {
+      reports: JSON.parse(JSON.stringify(mockReports)),
+      selectedReportId: "rpt_auto_001",
+      reportDetailTab: "content",
+      currentPage: "reportsPage",
+      analysisMode: "compare",
+      selectedAnalysisIds: ["rpt_auto_001", "rpt_auto_002", "rpt_manual_003"],
+      compareType: "company",
+      history: [
+        {
+          type: "compare",
+          title: "白酒/新能源/汽车跨行业对比",
+          created_at: "今天 10:42",
+          result_summary: "共识在于龙头优势明显，差异在于盈利兑现节奏与估值容忍度。"
+        },
+        {
+          type: "query",
+          title: "提问：腾讯当前更适合底仓还是交易？",
+          created_at: "今天 09:58",
+          result_summary: "更适合作为稳定现金流互联网龙头配置，短期催化取决于广告与游戏双修复。"
+        }
+      ],
+      chatHistory: [
+        {
+          type: "ai",
+          content: "你可以直接提问，例如：'对比宁德时代和比亚迪的盈利修复逻辑'，或 '当前哪些样本更适合作为组合底仓？'",
+          sources: []
+        }
+      ]
+    };
+
+    const el = {
+      reportList: document.getElementById("reportList"),
+      reportListCount: document.getElementById("reportListCount"),
+      detailWrap: document.getElementById("detailWrap"),
+      reportSearch: document.getElementById("reportSearch"),
+      statusFilter: document.getElementById("statusFilter"),
+      sourceFilter: document.getElementById("sourceFilter"),
+      metricTotalReports: document.getElementById("metricTotalReports"),
+      metricCompleted: document.getElementById("metricCompleted"),
+      metricPositiveRatio: document.getElementById("metricPositiveRatio"),
+      metricAvgUpside: document.getElementById("metricAvgUpside"),
+      metricTopIndustry: document.getElementById("metricTopIndustry"),
+      stockSidebar: document.getElementById("stockSidebar"),
+      analysisReportSelector: document.getElementById("analysisReportSelector"),
+      analysisMain: document.getElementById("analysisMain"),
+      historyList: document.getElementById("historyList"),
+      compareType: document.getElementById("compareType"),
+      compareSelectionHint: document.getElementById("compareSelectionHint"),
+      tooltip: document.getElementById("tooltip")
+    };
+
+    function formatNumber(value, digits = 1) {
+      return Number(value).toLocaleString("zh-CN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
+    }
+
+    function formatPercent(value, digits = 1) {
+      return `${value.toFixed(digits)}%`;
+    }
+
+    function hashCode(text) {
+      return String(text).split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    }
+
+    function buildSeries(report) {
+      const seed = hashCode(report.id);
+      const base = report.current_price || 100;
+      const priceSeries = Array.from({ length: 12 }, (_, index) => {
+        const drift = (index - 5) * 0.006;
+        const wave = Math.sin((seed + index * 17) / 8) * 0.018;
+        return +(base * (1 + drift + wave)).toFixed(2);
+      });
+      const volumeSeries = Array.from({ length: 12 }, (_, index) => {
+        const wave = Math.abs(Math.sin((seed + index * 11) / 5));
+        return Math.round((wave * 1.8 + 0.6) * 10) / 10;
+      });
+      return { priceSeries, volumeSeries };
+    }
+
+    function buildLineChart(values, colorA = "#1c63af", colorB = "#f2c75c") {
+      const width = 252;
+      const height = 128;
+      const padding = 10;
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const range = max - min || 1;
+      const points = values.map((value, index) => {
+        const x = padding + (index * (width - padding * 2)) / (values.length - 1);
+        const y = height - padding - ((value - min) / range) * (height - padding * 2);
+        return [x, y];
+      });
+      const polyline = points.map(([x, y]) => `${x},${y}`).join(" ");
+      const area = [`${padding},${height - padding}`, ...points.map(([x, y]) => `${x},${y}`), `${width - padding},${height - padding}`].join(" ");
+      return `
+        <svg class="chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="lineStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="${colorA}" />
+              <stop offset="100%" stop-color="${colorB}" />
+            </linearGradient>
+            <linearGradient id="lineFill" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="rgba(44,108,176,0.24)" />
+              <stop offset="100%" stop-color="rgba(44,108,176,0.02)" />
+            </linearGradient>
+          </defs>
+          <path d="M ${padding} ${height - padding} L ${width - padding} ${height - padding}" stroke="#e3eef9" stroke-width="1" />
+          <polygon points="${area}" fill="url(#lineFill)"></polygon>
+          <polyline points="${polyline}" fill="none" stroke="url(#lineStroke)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>
+          ${points.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${i === values.length - 1 ? 4 : 2.5}" fill="${i === values.length - 1 ? colorB : colorA}" opacity="${i === values.length - 1 ? 1 : 0.75}" />`).join("")}
+        </svg>
+      `;
+    }
+
+    function buildBarChart(values) {
+      const width = 252;
+      const height = 128;
+      const max = Math.max(...values) || 1;
+      const barWidth = 14;
+      const gap = 6;
+      return `
+        <svg class="chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="barFill" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#7db8ff" />
+              <stop offset="100%" stop-color="#215eaa" />
+            </linearGradient>
+          </defs>
+          <path d="M 0 ${height - 12} L ${width} ${height - 12}" stroke="#e3eef9" stroke-width="1" />
+          ${values.map((value, index) => {
+            const x = 12 + index * (barWidth + gap);
+            const barHeight = (value / max) * 92;
+            const y = height - 12 - barHeight;
+            return `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="5" fill="url(#barFill)" opacity="${index === values.length - 1 ? 1 : 0.82}" />`;
+          }).join("")}
+        </svg>
+      `;
+    }
+
+    function getReportsFiltered() {
+      const search = el.reportSearch.value.trim().toLowerCase();
+      const status = el.statusFilter.value;
+      const source = el.sourceFilter.value;
+      return state.reports.filter((report) => {
+        const hitSearch = !search || [report.title, report.company, report.company_code, report.broker].some((item) => String(item).toLowerCase().includes(search));
+        const hitStatus = status === "all" || report.status === status;
+        const hitSource = source === "all" || report.source === source;
+        return hitSearch && hitStatus && hitSource;
+      });
+    }
+
+    function getCompletedReports() {
+      return state.reports.filter((report) => report.status === "completed");
+    }
+
+    function getSelectedReport() {
+      return state.reports.find((report) => report.id === state.selectedReportId) || getReportsFiltered()[0] || state.reports[0];
+    }
+
+    function getStatusClass(status) {
+      return { completed: "completed", pending: "pending", parsing: "parsing", failed: "failed" }[status] || "pending";
+    }
+
+    function calcSummary() {
+      const total = state.reports.length;
+      const completed = state.reports.filter((item) => item.status === "completed").length;
+      const positive = state.reports.filter((item) => ["买入", "增持", "推荐", "谨慎增持"].includes(item.rating)).length;
+      const upsides = state.reports
+        .filter((item) => item.target_price && item.current_price)
+        .map((item) => ((item.target_price - item.current_price) / item.current_price) * 100);
+      const avgUpside = upsides.reduce((sum, value) => sum + value, 0) / upsides.length;
+      const industryCounter = {};
+      state.reports.forEach((report) => {
+        industryCounter[report.industry] = (industryCounter[report.industry] || 0) + 1;
+      });
+      const topIndustry = Object.entries(industryCounter).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
+      el.metricTotalReports.textContent = total;
+      el.metricCompleted.textContent = completed;
+      el.metricPositiveRatio.textContent = formatPercent((positive / total) * 100, 0);
+      el.metricAvgUpside.textContent = formatPercent(avgUpside, 1);
+      el.metricTopIndustry.textContent = topIndustry;
+    }
+
+    function renderStockSidebar() {
+      const report = getSelectedReport();
+      if (!report || !el.stockSidebar) return;
+      const { priceSeries, volumeSeries } = buildSeries(report);
+      const lastPrice = priceSeries[priceSeries.length - 1];
+      const firstPrice = priceSeries[0];
+      const priceChange = ((lastPrice - firstPrice) / firstPrice) * 100;
+      const turnover = (hashCode(report.company_code) % 35 + 18) / 10;
+      const pe = +(12 + (hashCode(report.id) % 220) / 10).toFixed(1);
+      const pb = +(1.1 + (hashCode(report.company) % 25) / 10).toFixed(1);
+      const marketCap = Math.round((report.current_price || 100) * (hashCode(report.company_code) % 60 + 40));
+      const weekHigh = Math.max(...priceSeries);
+      const weekLow = Math.min(...priceSeries);
+      const northbound = ((hashCode(report.broker) % 160) - 40) / 10;
+
+      el.stockSidebar.innerHTML = `
+        <div class="brief-box">
+          <div class="section-kicker">标的概览</div>
+          <h4>${report.company} · ${report.company_code}</h4>
+          <p class="section-copy">${report.industry}行业 · ${report.rating}评级 · 当前价格与研报目标价联动展示。</p>
+        </div>
+        <div class="stock-overview">
+          <div class="stock-kpi">
+            <span class="muted">现价</span>
+            <strong>¥${formatNumber(report.current_price, 1)}</strong>
+          </div>
+          <div class="stock-kpi">
+            <span class="muted">目标涨幅</span>
+            <strong style="color:${((report.target_price - report.current_price) / report.current_price) * 100 >= 0 ? "var(--green)" : "var(--red)"};">${formatPercent(((report.target_price - report.current_price) / report.current_price) * 100, 1)}</strong>
+          </div>
+          <div class="stock-kpi">
+            <span class="muted">总市值</span>
+            <strong>${marketCap} 亿</strong>
+          </div>
+          <div class="stock-kpi">
+            <span class="muted">换手率</span>
+            <strong>${turnover.toFixed(1)}%</strong>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-head">
+            <h4>近12期价格走势</h4>
+            <span>${priceChange >= 0 ? "+" : ""}${formatPercent(priceChange, 1)}</span>
+          </div>
+          ${buildLineChart(priceSeries)}
+          <div class="chart-footnote">区间高点 ¥${formatNumber(weekHigh, 1)} · 区间低点 ¥${formatNumber(weekLow, 1)} · 最新收盘 ¥${formatNumber(lastPrice, 1)}</div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-head">
+            <h4>成交热度</h4>
+            <span>单位：亿股</span>
+          </div>
+          ${buildBarChart(volumeSeries)}
+          <div class="chart-footnote">最近一期成交量 ${volumeSeries[volumeSeries.length - 1].toFixed(1)} 亿股，适合配合研报观点观察催化兑现强度。</div>
+        </div>
+        <div class="stock-overview">
+          <div class="stock-kpi">
+            <span class="muted">PE(TTM)</span>
+            <strong>${pe}x</strong>
+          </div>
+          <div class="stock-kpi">
+            <span class="muted">PB(MRQ)</span>
+            <strong>${pb}x</strong>
+          </div>
+          <div class="stock-kpi">
+            <span class="muted">北向净流入</span>
+            <strong style="color:${northbound >= 0 ? "var(--green)" : "var(--red)"};">${northbound >= 0 ? "+" : ""}${northbound.toFixed(1)} 亿</strong>
+          </div>
+          <div class="stock-kpi">
+            <span class="muted">一致预期</span>
+            <strong>${report.rating}</strong>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderReportList() {
+      const list = getReportsFiltered();
+      if (!list.some((item) => item.id === state.selectedReportId) && list[0]) {
+        state.selectedReportId = list[0].id;
+      }
+      el.reportListCount.textContent = `${list.length} 份`;
+      el.reportList.innerHTML = list.map((report) => {
+        const upside = report.target_price && report.current_price ? ((report.target_price - report.current_price) / report.current_price) * 100 : null;
+        return `
+          <article class="report-card ${report.id === state.selectedReportId ? "active" : ""}" data-report-id="${report.id}">
+            <div class="tag-row">
+              ${report.auto ? `<span class="chip auto">自动</span>` : `<span class="chip auto" style="background:linear-gradient(135deg,#edf6ff,#d8ebff);color:#1b4d88;">上传</span>`}
+              <span class="chip ${getStatusClass(report.status)}">${report.status === "completed" ? "已完成" : report.status === "pending" ? "待解析" : report.status === "parsing" ? "解析中" : "失败"}</span>
+              <span class="chip rating">${report.rating}</span>
+            </div>
+            <div class="report-topline">
+              <div>
+                <div class="report-title" data-tooltip="${report.title}">${report.title}</div>
+                <div class="report-desc">${report.company} · ${report.company_code} · ${report.broker}</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="meta-label">目标价</div>
+                <div style="font-size:18px;font-weight:800;color:var(--blue-5);">¥${formatNumber(report.target_price, 1)}</div>
+              </div>
+            </div>
+            <div class="report-desc">分析师 ${report.analyst} · 行业 ${report.industry}</div>
+            <div class="report-desc" style="margin-top:8px;" data-tooltip="${report.key_abstract}">${report.key_abstract}</div>
+            <div class="report-actions">
+              <button class="tiny-btn" data-action="view" data-report-id="${report.id}">查看</button>
+              <button class="tiny-btn" data-action="reparse" data-report-id="${report.id}">重解析</button>
+              <button class="tiny-btn" data-action="delete" data-report-id="${report.id}">删除</button>
+            </div>
+            <div class="report-desc" style="margin-top:8px;color:${upside >= 0 ? "var(--green)" : "var(--red)"};">目标涨幅 ${upside === null ? "-" : formatPercent(upside, 1)}</div>
+          </article>
+        `;
+      }).join("") || `<div class="empty-state"><div><h3>暂无匹配研报</h3><p>调整搜索词、状态或来源筛选后重试。</p></div></div>`;
+    }
+
+    function renderDetail() {
+      const report = getSelectedReport();
+      if (!report) {
+        el.detailWrap.innerHTML = `<div class="empty-state"><div><h3>未选择研报</h3><p>点击左侧研报查看详情。</p></div></div>`;
+        return;
+      }
+      state.selectedReportId = report.id;
+      const summary = report.summary || { key_points: "", investment_highlights: "", risk_warnings: "" };
+      const forecastEntries = [
+        ["营收 2024E", `${formatNumber(report.financial_forecast.revenue_2024)} 亿元`],
+        ["营收 2025E", `${formatNumber(report.financial_forecast.revenue_2025)} 亿元`],
+        ["净利润 2024E", `${formatNumber(report.financial_forecast.net_profit_2024)} 亿元`],
+        ["净利润 2025E", `${formatNumber(report.financial_forecast.net_profit_2025)} 亿元`],
+        ["EPS 2024E", `${formatNumber(report.financial_forecast.eps_2024, 2)}`],
+        ["EPS 2025E", `${formatNumber(report.financial_forecast.eps_2025, 2)}`]
+      ];
+      const upside = report.target_price && report.current_price ? ((report.target_price - report.current_price) / report.current_price) * 100 : null;
+
+      el.detailWrap.innerHTML = `
+        <div class="detail-hero">
+          <div class="tag-row" style="margin-bottom:14px;">
+            ${report.auto ? `<span class="chip auto">自动抓取</span>` : `<span class="chip auto" style="background:linear-gradient(135deg,#edf6ff,#d8ebff);color:#1b4d88;">手工上传</span>`}
+            <span class="chip ${getStatusClass(report.status)}">${report.status === "completed" ? "已完成" : report.status === "pending" ? "待解析" : report.status === "parsing" ? "解析中" : "失败"}</span>
+            <span class="chip rating">${report.rating}</span>
+          </div>
+          <h2 class="detail-title">${report.title}</h2>
+          <div class="detail-meta-grid">
+            <div class="meta-box">
+              <div class="meta-label">公司 / 代码</div>
+              <div class="meta-value">${report.company}</div>
+              <div class="report-desc">${report.company_code}</div>
+            </div>
+            <div class="meta-box">
+              <div class="meta-label">券商 / 分析师</div>
+              <div class="meta-value">${report.broker}</div>
+              <div class="report-desc">${report.analyst}</div>
+            </div>
+            <div class="meta-box">
+              <div class="meta-label">目标价 / 现价</div>
+              <div class="meta-value">¥${formatNumber(report.target_price, 1)} / ¥${formatNumber(report.current_price, 1)}</div>
+              <div class="report-desc" style="color:${upside >= 0 ? "var(--green)" : "var(--red)"};">潜在涨幅 ${formatPercent(upside || 0, 1)}</div>
+            </div>
+            <div class="meta-box">
+              <div class="meta-label">报告日期 / 文件</div>
+              <div class="meta-value">${report.report_date}</div>
+              <div class="report-desc">${report.file_type.toUpperCase()} · ${(report.file_size / 1024 / 1024).toFixed(2)} MB</div>
+            </div>
+          </div>
+        </div>
+        <div class="tabs">
+          <button class="tab-btn ${state.reportDetailTab === "content" ? "active" : ""}" data-detail-tab="content">研报内容</button>
+          <button class="tab-btn ${state.reportDetailTab === "summary" ? "active" : ""}" data-detail-tab="summary">研报总结</button>
+          <button class="tab-btn ${state.reportDetailTab === "abstract" ? "active" : ""}" data-detail-tab="abstract">关键摘要</button>
+          <button class="tab-btn ${state.reportDetailTab === "notes" ? "active" : ""}" data-detail-tab="notes">批注</button>
+          <button class="tab-btn ${state.reportDetailTab === "meta" ? "active" : ""}" data-detail-tab="meta">元数据</button>
+        </div>
+        <div class="tab-panel ${state.reportDetailTab === "content" ? "active" : ""}">
+          <div class="section-block">
+            <div class="section-kicker">核心观点</div>
+            <h3 class="section-title">投资逻辑概览</h3>
+            <p class="section-copy">${report.core_views}</p>
+          </div>
+          <div class="section-block">
+            <div class="section-kicker">正文摘录</div>
+            <div class="info-box">
+              <p class="section-copy">${report.content}</p>
+            </div>
+          </div>
+          <div class="section-block">
+            <div class="section-kicker">财务预测</div>
+            <div class="forecast-grid">
+              ${forecastEntries.map(([label, value]) => `
+                <div class="forecast-box">
+                  <div class="meta-label">${label}</div>
+                  <div class="forecast-value">${value}</div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+        <div class="tab-panel ${state.reportDetailTab === "summary" ? "active" : ""}">
+          <div class="section-block">
+            <h3 class="section-title">核心观点摘要</h3>
+            <div class="info-box"><p class="section-copy">${summary.key_points}</p></div>
+          </div>
+          <div class="section-block">
+            <h3 class="section-title">投资亮点</h3>
+            <div class="info-box"><p class="section-copy">${summary.investment_highlights}</p></div>
+          </div>
+          <div class="section-block">
+            <h3 class="section-title">风险提示</h3>
+            <div class="info-box"><p class="section-copy">${summary.risk_warnings}</p></div>
+          </div>
+        </div>
+        <div class="tab-panel ${state.reportDetailTab === "abstract" ? "active" : ""}">
+          <div class="section-block">
+            <div class="brief-box">
+              <div class="section-kicker">关键摘要</div>
+              <h4>一句话判断</h4>
+              <p class="section-copy">${report.key_abstract}</p>
+            </div>
+          </div>
+          <div class="section-block">
+            <div class="brief-box">
+              <div class="section-kicker">适用场景</div>
+              <p class="section-copy">${report.rating === "买入" ? "适合作为重点推荐样本进入组合候选池，并配合估值与催化复核。" : report.rating === "中性" ? "适合作为行业跟踪样本，等待更明确的基本面验证。" : "适合纳入观察池，配合对比分析判断赔率与胜率。"} </p>
+            </div>
+          </div>
+        </div>
+        <div class="tab-panel ${state.reportDetailTab === "notes" ? "active" : ""}">
+          <div class="section-block">
+            <div class="info-box">
+              <div class="section-kicker">批注占位</div>
+              <p class="section-copy">这里预留给研究员手工标注、二次摘要、风险提示升级与路演纪要补充。纯 HTML 原型中默认展示占位内容，以体现后续可扩展性。</p>
+            </div>
+          </div>
+        </div>
+        <div class="tab-panel ${state.reportDetailTab === "meta" ? "active" : ""}">
+          <div class="forecast-grid">
+            <div class="info-box"><div class="meta-label">文件路径</div><div class="section-copy">${report.file_path}</div></div>
+            <div class="info-box"><div class="meta-label">创建时间</div><div class="section-copy">${report.created_at}</div></div>
+            <div class="info-box"><div class="meta-label">更新时间</div><div class="section-copy">${report.updated_at}</div></div>
+            <div class="info-box"><div class="meta-label">状态说明</div><div class="section-copy">${report.status === "failed" ? report.parse_error : "字段提取完成，可继续进入分析链路。"} </div></div>
+            <div class="info-box"><div class="meta-label">文件类型</div><div class="section-copy">${report.file_type.toUpperCase()}</div></div>
+            <div class="info-box"><div class="meta-label">来源</div><div class="section-copy">${report.auto ? "自动抓取 / 去重拉新" : "手工上传"}</div></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAnalysisSelector() {
+      const completedReports = getCompletedReports();
+      el.analysisReportSelector.innerHTML = completedReports.map((report) => `
+        <label class="selector-item ${state.selectedAnalysisIds.includes(report.id) ? "selected" : ""}" data-select-report="${report.id}">
+          <input type="checkbox" ${state.selectedAnalysisIds.includes(report.id) ? "checked" : ""} />
+          <div>
+            <div class="report-title" style="margin-bottom:6px;" data-tooltip="${report.title}">${report.title}</div>
+            <div class="report-desc">${report.company} · ${report.broker}</div>
+            <div class="report-desc">评级 ${report.rating} · 行业 ${report.industry}</div>
+          </div>
+        </label>
+      `).join("");
+      el.compareSelectionHint.textContent = state.selectedAnalysisIds.length >= 2
+        ? `当前已选 ${state.selectedAnalysisIds.length} 份研报，可直接执行 ${state.compareType === "company" ? "公司" : state.compareType === "industry" ? "行业" : "自定义"} 对比。`
+        : "请至少选择 2 份已完成研报进行对比分析。";
+    }
+
+    function renderCompareView() {
+      const template = compareTemplates[state.compareType];
+      const selectedReports = state.reports.filter((report) => state.selectedAnalysisIds.includes(report.id));
+      if (selectedReports.length < 2) {
+        el.analysisMain.innerHTML = `
+          <div class="empty-state">
+            <div>
+              <h3>等待对比样本</h3>
+              <p>请在左侧至少选择 2 份已完成研报，再执行对比分析。</p>
+            </div>
+          </div>
+        `;
+        return;
+      }
+      const titles = selectedReports.map((report) => report.company).join(" / ");
+      el.analysisMain.innerHTML = `
+        <div class="detail-wrap">
+          <div class="detail-hero">
+            <div class="section-kicker">Compare Result</div>
+            <h2 class="detail-title">${titles} 对比分析</h2>
+            <div class="report-desc">对比维度：${state.compareType === "company" ? "公司对比" : state.compareType === "industry" ? "行业对比" : "自定义对比"} · 样本 ${selectedReports.length} 份</div>
+          </div>
+          <div class="tab-panel active" style="display:block;height:calc(100% - 130px);">
+            <div class="brief-box">
+              <div class="section-kicker">分析总结</div>
+              <h4>核心结论</h4>
+              <p class="section-copy">${template.summary}</p>
+            </div>
+            <div class="compare-grid">
+              <div class="compare-box">
+                <h4>共同点</h4>
+                <ul class="bullet-list">${template.similarities.map((item) => `<li>${item}</li>`).join("")}</ul>
+              </div>
+              <div class="compare-box">
+                <h4>差异点</h4>
+                <ul class="bullet-list">${template.differences.map((item) => `<li>${item}</li>`).join("")}</ul>
+              </div>
+            </div>
+            <div class="compare-box" style="margin-top:14px;">
+              <h4>投资建议</h4>
+              <ul class="bullet-list">${template.recommendations.map((item) => `<li>${item}</li>`).join("")}</ul>
+            </div>
+            <div class="source-list">
+              ${selectedReports.map((report) => `
+                <div class="source-item">
+                  <h4>${report.company} · ${report.rating}</h4>
+                  <div class="report-desc">${report.key_abstract}</div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderQAView() {
+      const selectedReports = state.selectedAnalysisIds.length ? state.reports.filter((report) => state.selectedAnalysisIds.includes(report.id)) : getCompletedReports();
+      const latestAi = [...state.chatHistory].reverse().find((item) => item.type === "ai" && item.sources?.length);
+      el.analysisMain.innerHTML = `
+        <div class="detail-wrap">
+          <div class="detail-hero">
+            <div class="section-kicker">AI Query</div>
+            <h2 class="detail-title">研报问答工作台</h2>
+            <div class="report-desc">当前知识范围：${selectedReports.map((report) => report.company).join(" / ")}</div>
+          </div>
+          <div class="chat-stream" id="chatStream">
+            ${state.chatHistory.map((item) => `
+              <div class="chat-item ${item.type}">
+                <div class="meta-label">${item.type === "user" ? "我的问题" : "AI助手"}</div>
+                <div style="line-height:1.8;font-size:13px;">${item.content}</div>
+                ${item.sources && item.sources.length ? `
+                  <div class="source-list">
+                    ${item.sources.map((source) => `
+                      <div class="source-item">
+                        <h4>${source.report_title}</h4>
+                        <div class="report-desc">${source.excerpt}</div>
+                      </div>
+                    `).join("")}
+                  </div>
+                ` : ""}
+              </div>
+            `).join("")}
+          </div>
+          <div class="chat-input">
+            <div class="chat-input-row">
+              <textarea class="textarea" id="qaInput" rows="3" placeholder="输入问题，例如：当前哪些样本更适合作为组合底仓？"></textarea>
+              <button class="btn primary" id="sendQuestionBtn">发送问题</button>
+            </div>
+            <div class="report-desc" style="margin-top:8px;">支持基于已选研报回答；若未选择任何样本，则默认使用全部已完成研报。</div>
+          </div>
+        </div>
+      `;
+      const chatStream = document.getElementById("chatStream");
+      if (chatStream) {
+        chatStream.scrollTop = chatStream.scrollHeight;
+      }
+    }
+
+    function renderAnalysisMain() {
+      if (state.analysisMode === "compare") {
+        renderCompareView();
+      } else {
+        renderQAView();
+      }
+    }
+
+    function renderHistory() {
+      el.historyList.innerHTML = state.history.map((item) => `
+        <div class="history-item">
+          <small>${item.created_at} · ${item.type === "compare" ? "对比分析" : "AI问答"}</small>
+          <h4>${item.title}</h4>
+          <div class="report-desc">${item.result_summary}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderPage() {
+      calcSummary();
+      renderReportList();
+      renderDetail();
+      renderStockSidebar();
+      renderAnalysisSelector();
+      renderAnalysisMain();
+      renderHistory();
+    }
+
+    function switchPage(pageId) {
+      state.currentPage = pageId;
+      document.querySelectorAll(".nav-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.pageTarget === pageId));
+      document.querySelectorAll(".page").forEach((page) => page.classList.toggle("active", page.id === pageId));
+    }
+
+    function addHistory(type, title, summary) {
+      state.history.unshift({
+        type,
+        title,
+        created_at: "刚刚",
+        result_summary: summary
+      });
+      state.history = state.history.slice(0, 8);
+      renderHistory();
+    }
+
+    function resetFilters() {
+      el.reportSearch.value = "";
+      el.statusFilter.value = "all";
+      el.sourceFilter.value = "all";
+      renderPage();
+    }
+
+    function runCompare() {
+      if (state.selectedAnalysisIds.length < 2) {
+        alert("请至少选择 2 份已完成研报进行对比。");
+        return;
+      }
+      renderAnalysisMain();
+      const selectedCompanies = state.reports.filter((report) => state.selectedAnalysisIds.includes(report.id)).map((item) => item.company).join(" / ");
+      addHistory("compare", `${selectedCompanies} 对比`, "已生成新的对比分析结果，建议结合投资建议与来源摘要继续深挖。");
+    }
+
+    function sendQuestion() {
+      const input = document.getElementById("qaInput");
+      const question = input.value.trim();
+      if (!question) {
+        alert("请输入问题。");
+        return;
+      }
+      state.chatHistory.push({ type: "user", content: question, sources: [] });
+      const selectedReports = state.selectedAnalysisIds.length ? state.reports.filter((report) => state.selectedAnalysisIds.includes(report.id)) : getCompletedReports();
+      const hit = qaAnswers.find((item) => item.keywords.some((key) => question.includes(key)));
+      const fallback = "结合当前样本，更建议先区分问题属于“底仓配置”还是“弹性交易”。如果追求稳健，可优先看现金流、品牌与分红能力强的龙头；如果追求弹性，应重点确认盈利拐点是否已经出现，并结合目标涨幅与催化密度做排序。";
+      const sources = selectedReports.slice(0, 3).map((report) => ({
+        report_title: report.title,
+        excerpt: report.key_abstract
+      }));
+      state.chatHistory.push({
+        type: "ai",
+        content: hit ? hit.answer : fallback,
+        sources
+      });
+      addHistory("query", `提问：${question}`, "已根据选定研报样本生成回答，并返回引用来源。");
+      renderAnalysisMain();
+    }
+
+    function reparseReport(id) {
+      const report = state.reports.find((item) => item.id === id);
+      if (!report) return;
+      report.status = "completed";
+      report.parse_error = "";
+      report.updated_at = new Date().toISOString().slice(0, 19);
+      renderPage();
+    }
+
+    function deleteReport(id) {
+      const index = state.reports.findIndex((item) => item.id === id);
+      if (index === -1) return;
+      const removed = state.reports[index];
+      state.reports.splice(index, 1);
+      state.selectedAnalysisIds = state.selectedAnalysisIds.filter((item) => item !== id);
+      if (state.selectedReportId === id) {
+        state.selectedReportId = state.reports[0]?.id || "";
+      }
+      addHistory("query", `删除研报：${removed.company}`, "样本已从研报池移除，分析侧选择范围同步更新。");
+      renderPage();
+    }
+
+    function fetchReports() {
+      const candidates = [
+        {
+          id: `rpt_auto_new_${Date.now()}`,
+          title: "中国平安(601318)价值跟踪：寿险改革稳步推进，综合金融协同仍有释放空间",
+          company: "中国平安",
+          company_code: "601318.SH",
+          industry: "保险",
+          broker: "中信证券",
+          analyst: "吴刚",
+          rating: "增持",
+          target_price: 57.6,
+          current_price: 49.5,
+          core_views: "1. 寿险改革影响逐步消化，新业务价值有望改善。\n2. 资负两端匹配能力仍是核心优势。\n3. 综合金融生态带来交叉销售与客户留存优势。",
+          financial_forecast: { revenue_2024: 12580.5, revenue_2025: 13140.2, net_profit_2024: 1234.0, net_profit_2025: 1320.6, eps_2024: 6.9, eps_2025: 7.3 },
+          summary: {
+            key_points: "寿险改革、资负匹配、综合金融。",
+            investment_highlights: "低估值 + 高股息 + 改革预期。",
+            risk_warnings: "权益市场波动、负债端恢复低于预期。"
+          },
+          key_abstract: "保险龙头的看点在于改革兑现与资产端稳定性，而不是短期题材刺激。",
+          content: "公司在寿险改革与综合金融层面持续推进，估值仍具修复空间。",
+          file_path: "uploads/601318_SH_20260415.pdf",
+          file_type: "pdf",
+          file_size: 2020000,
+          status: "completed",
+          parse_error: "",
+          created_at: "2026-04-15T11:20:00",
+          updated_at: "2026-04-15T11:22:00",
+          report_date: "2026-04-15",
+          source: "auto",
+          auto: true
+        },
+        {
+          id: `rpt_auto_new_${Date.now() + 1}`,
+          title: "美团(03690)业务观察：到店修复稳健，新业务减亏节奏优于市场预期",
+          company: "美团",
+          company_code: "03690.HK",
+          industry: "互联网",
+          broker: "中金公司",
+          analyst: "赵鹏",
+          rating: "买入",
+          target_price: 156,
+          current_price: 132,
+          core_views: "1. 到店酒旅韧性较强，核心本地商业盈利能力稳定。\n2. 新业务减亏改善，估值压力有望逐步缓解。\n3. 平台流量与履约网络优势仍在。",
+          financial_forecast: { revenue_2024: 3225.2, revenue_2025: 3550.8, net_profit_2024: 301.5, net_profit_2025: 392.7, eps_2024: 4.18, eps_2025: 5.41 },
+          summary: {
+            key_points: "到店修复、新业务减亏、平台优势。",
+            investment_highlights: "兼具互联网平台防守属性与盈利弹性。",
+            risk_warnings: "竞争加剧、消费需求波动。"
+          },
+          key_abstract: "核心变量在于盈利质量提升能否持续兑现，若成立则估值有修复空间。",
+          content: "公司正从“流量平台”进一步向“高效率本地商业基础设施”演进。",
+          file_path: "uploads/03690_HK_20260415.pdf",
+          file_type: "pdf",
+          file_size: 1880000,
+          status: "completed",
+          parse_error: "",
+          created_at: "2026-04-15T11:26:00",
+          updated_at: "2026-04-15T11:29:00",
+          report_date: "2026-04-15",
+          source: "auto",
+          auto: true
+        }
+      ];
+      const existingCompanies = new Set(state.reports.map((item) => item.company));
+      const additions = candidates.filter((item) => !existingCompanies.has(item.company));
+      state.reports.unshift(...additions);
+      if (additions[0]) {
+        state.selectedReportId = additions[0].id;
+      }
+      addHistory("compare", "自动抓取新研报", `已新增 ${additions.length} 份去重样本，可继续在对比分析模块中使用。`);
+      renderPage();
+      alert(`成功抓取 ${additions.length} 份新研报。`);
+    }
+
+    function uploadReport() {
+      const newReport = {
+        id: `rpt_manual_new_${Date.now()}`,
+        title: "隆基绿能(601012)上传样本：组件价格趋稳，BC电池商业化节奏值得跟踪",
+        company: "隆基绿能",
+        company_code: "601012.SH",
+        industry: "新能源",
+        broker: "上传文件",
+        analyst: "本地导入",
+        rating: "待补充",
+        target_price: 21.8,
+        current_price: 18.7,
+        core_views: "1. 原型中模拟手工上传后自动补齐基础字段。\n2. 后续可进入重新解析流程丰富信息。\n3. 用于展示上传链路与待办状态。",
+        financial_forecast: { revenue_2024: 894.0, revenue_2025: 1012.5, net_profit_2024: 62.4, net_profit_2025: 91.6, eps_2024: 0.82, eps_2025: 1.19 },
+        summary: {
+          key_points: "上传样本、待校验、可重解析。",
+          investment_highlights: "用于模拟手工上传文件进入列表后的可追踪状态。",
+          risk_warnings: "字段未完全补齐，仅为交互演示。"
+        },
+        key_abstract: "模拟上传样本默认直接进入待解析状态，便于体现完整流程。",
+        content: "这是一个用于展示上传流程的 mock 研报。实际业务中应由后端解析 PDF/HTML 并填充结构化字段。",
+        file_path: "uploads/manual_longi_upload.pdf",
+        file_type: "pdf",
+        file_size: 1160000,
+        status: "pending",
+        parse_error: "",
+        created_at: "2026-04-15T11:35:00",
+        updated_at: "2026-04-15T11:35:00",
+        report_date: "2026-04-15",
+        source: "manual",
+        auto: false
+      };
+      state.reports.unshift(newReport);
+      state.selectedReportId = newReport.id;
+      renderPage();
+      alert("已模拟上传 1 份研报，状态为待解析。");
+    }
+
+    document.addEventListener("click", (event) => {
+      const navTab = event.target.closest(".nav-tab");
+      if (navTab) {
+        switchPage(navTab.dataset.pageTarget);
+        return;
+      }
+
+      const reportCard = event.target.closest(".report-card");
+      if (reportCard && !event.target.closest("[data-action]")) {
+        state.selectedReportId = reportCard.dataset.reportId;
+        renderDetail();
+        renderReportList();
+        return;
+      }
+
+      const actionBtn = event.target.closest("[data-action]");
+      if (actionBtn) {
+        const { action, reportId } = actionBtn.dataset;
+        if (action === "view") {
+          state.selectedReportId = reportId;
+          renderPage();
+        } else if (action === "reparse") {
+          reparseReport(reportId);
+        } else if (action === "delete") {
+          deleteReport(reportId);
+        }
+        return;
+      }
+
+      const detailTab = event.target.closest("[data-detail-tab]");
+      if (detailTab) {
+        state.reportDetailTab = detailTab.dataset.detailTab;
+        renderDetail();
+        return;
+      }
+
+      const modeBtn = event.target.closest(".mode-btn");
+      if (modeBtn) {
+        state.analysisMode = modeBtn.dataset.modeTarget;
+        document.querySelectorAll(".mode-btn").forEach((btn) => btn.classList.toggle("active", btn === modeBtn));
+        document.getElementById("compareControls").style.display = state.analysisMode === "compare" ? "" : "none";
+        document.getElementById("qaControls").style.display = state.analysisMode === "qa" ? "" : "none";
+        renderAnalysisMain();
+        return;
+      }
+
+      const selector = event.target.closest("[data-select-report]");
+      if (selector) {
+        const reportId = selector.dataset.selectReport;
+        if (state.selectedAnalysisIds.includes(reportId)) {
+          state.selectedAnalysisIds = state.selectedAnalysisIds.filter((item) => item !== reportId);
+        } else {
+          state.selectedAnalysisIds.push(reportId);
+        }
+        renderAnalysisSelector();
+        renderAnalysisMain();
+      }
+    });
+
+    el.reportSearch.addEventListener("input", renderPage);
+    el.statusFilter.addEventListener("change", renderPage);
+    el.sourceFilter.addEventListener("change", renderPage);
+    el.compareType.addEventListener("change", (event) => {
+      state.compareType = event.target.value;
+      renderAnalysisSelector();
+      renderAnalysisMain();
+    });
+
+    document.getElementById("runCompareBtn").addEventListener("click", runCompare);
+    document.getElementById("selectAllAnalysisBtn").addEventListener("click", () => {
+      state.selectedAnalysisIds = getCompletedReports().map((item) => item.id);
+      renderAnalysisSelector();
+      renderAnalysisMain();
+    });
+    document.getElementById("fetchBtn").addEventListener("click", fetchReports);
+    document.getElementById("uploadBtn").addEventListener("click", uploadReport);
+    document.getElementById("resetFiltersBtn").addEventListener("click", resetFilters);
+
+    document.addEventListener("input", (event) => {
+      if (event.target.id === "qaInput" && event.target.value.length > 500) {
+        event.target.value = event.target.value.slice(0, 500);
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      if (event.target.id === "sendQuestionBtn") {
+        sendQuestion();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      const input = document.getElementById("qaInput");
+      if (event.key === "Enter" && !event.shiftKey && document.activeElement === input) {
+        event.preventDefault();
+        sendQuestion();
+      }
+    });
+
+    document.addEventListener("mouseover", (event) => {
+      const target = event.target.closest("[data-tooltip]");
+      if (!target) return;
+      el.tooltip.textContent = target.dataset.tooltip;
+      el.tooltip.classList.add("show");
+    });
+
+    document.addEventListener("mousemove", (event) => {
+      if (!el.tooltip.classList.contains("show")) return;
+      el.tooltip.style.left = `${Math.min(event.clientX + 16, window.innerWidth - 340)}px`;
+      el.tooltip.style.top = `${Math.min(event.clientY + 16, window.innerHeight - 120)}px`;
+    });
+
+    document.addEventListener("mouseout", (event) => {
+      if (event.target.closest("[data-tooltip]")) {
+        el.tooltip.classList.remove("show");
+      }
+    });
+
+    renderPage();
+  </script>
+</body>
+</html>
