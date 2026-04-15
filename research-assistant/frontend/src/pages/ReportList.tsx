@@ -18,6 +18,8 @@ export default function ReportList({ onDataChange }: ReportListProps) {
   const [selectedReportId, setSelectedReportId] = useState<string>('');
   const [activeTab, setActiveTab] = useState('content');
   const [fetching, setFetching] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<any>(null);
+  const [showStockPanel, setShowStockPanel] = useState(false);
 
   const fetchReports = async (search = '') => {
     setLoading(true);
