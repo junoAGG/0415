@@ -1,4 +1,4 @@
-import { Card, Row, Col } from 'antd';
+import { Card, Row, Col, Empty } from 'antd';
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -13,6 +13,15 @@ interface CandlestickChartProps {
 }
 
 export function CandlestickChart({ data }: CandlestickChartProps) {
+  // 空数据检查
+  if (!data || data.length === 0) {
+    return (
+      <Card title="K线走势" size="small" style={{ borderRadius: borderRadius.md }}>
+        <Empty description="暂无数据" style={{ padding: '40px 0' }} />
+      </Card>
+    );
+  }
+
   // 转换数据为K线格式
   const chartData = data.map(item => ({
     date: item.date.slice(5), // 只显示月-日
@@ -80,6 +89,15 @@ interface VolumeChartProps {
 }
 
 export function VolumeChart({ data }: VolumeChartProps) {
+  // 空数据检查
+  if (!data || data.length === 0) {
+    return (
+      <Card title="成交量趋势" size="small" style={{ borderRadius: borderRadius.md }}>
+        <Empty description="暂无数据" style={{ padding: '40px 0' }} />
+      </Card>
+    );
+  }
+
   const chartData = data.map(item => ({
     date: item.date.slice(5),
     volume: item.volume / 10000,
@@ -122,6 +140,15 @@ interface FinancialRadarProps {
 }
 
 export function FinancialRadar({ data }: FinancialRadarProps) {
+  // 空数据检查
+  if (!data) {
+    return (
+      <Card title="财务能力雷达" size="small" style={{ borderRadius: borderRadius.md }}>
+        <Empty description="暂无数据" style={{ padding: '40px 0' }} />
+      </Card>
+    );
+  }
+
   const radarData = [
     { subject: '盈利能力', A: Math.min(data.roe * 2, 100), fullMark: 100 },
     { subject: '成长能力', A: Math.min(Math.max(data.revenue_growth + 50, 0), 100), fullMark: 100 },
@@ -159,6 +186,15 @@ interface PeerComparisonProps {
 }
 
 export function PeerComparisonChart({ data, currentStock }: PeerComparisonProps) {
+  // 空数据检查
+  if (!data || data.length === 0) {
+    return (
+      <Card title="同业估值对比" size="small" style={{ borderRadius: borderRadius.md }}>
+        <Empty description="暂无数据" style={{ padding: '40px 0' }} />
+      </Card>
+    );
+  }
+
   const chartData = data.map(peer => ({
     name: peer.name,
     pe: peer.pe_ratio,
@@ -206,6 +242,15 @@ interface HolderStructureProps {
 }
 
 export function HolderStructureChart({ data }: HolderStructureProps) {
+  // 空数据检查
+  if (!data) {
+    return (
+      <Card title="股东结构" size="small" style={{ borderRadius: borderRadius.md }}>
+        <Empty description="暂无数据" style={{ padding: '40px 0' }} />
+      </Card>
+    );
+  }
+
   const pieData = [
     { name: '机构持股', value: data.institutional_holdings, color: colors.primary },
     { name: '北向资金', value: data.northbound_holdings, color: colors.accent },
@@ -253,6 +298,15 @@ interface TechnicalChartProps {
 }
 
 export function TechnicalIndicators({ data }: TechnicalChartProps) {
+  // 空数据检查
+  if (!data) {
+    return (
+      <Card title="均线系统" size="small" style={{ borderRadius: borderRadius.md }}>
+        <Empty description="暂无数据" style={{ padding: '40px 0' }} />
+      </Card>
+    );
+  }
+
   const chartData = [
     { name: 'MA5', value: data.ma5, type: '均线' },
     { name: 'MA10', value: data.ma10, type: '均线' },

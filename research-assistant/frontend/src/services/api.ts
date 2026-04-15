@@ -1,10 +1,11 @@
 import type { Report, ReportListResponse, UploadResponse, ApiResponse, ReportListParams, Stock, StockQuote, StockFinancial, StockFullData, StockSearchResponse, StockHistory } from '../types';
 
 const API_BASE = '/api/v1/agent';
+const STOCK_API_BASE = '/api/v1';
 
 // 统一请求处理
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${url}`, {
+async function request<T>(url: string, options?: RequestInit, baseUrl: string = API_BASE): Promise<T> {
+  const response = await fetch(`${baseUrl}${url}`, {
     ...options,
     headers: {
       ...options?.headers,
@@ -102,27 +103,27 @@ export const stockApi = {
   search: async (keyword: string): Promise<StockSearchResponse> => {
     const params = new URLSearchParams();
     if (keyword) params.set('q', keyword);
-    return request<StockSearchResponse>(`/stock/search?${params.toString()}`);
+    return request<StockSearchResponse>(`/stock/search?${params.toString()}`, undefined, STOCK_API_BASE);
   },
 
   // 获取股票详情
   getDetail: async (code: string): Promise<Stock> => {
-    return request<Stock>(`/stock/${code}`);
+    return request<Stock>(`/stock/${code}`, undefined, STOCK_API_BASE);
   },
 
   // 获取股票行情
   getQuote: async (code: string): Promise<StockQuote> => {
-    return request<StockQuote>(`/stock/${code}/quote`);
+    return request<StockQuote>(`/stock/${code}/quote`, undefined, STOCK_API_BASE);
   },
 
   // 获取财务指标
   getFinancial: async (code: string): Promise<StockFinancial> => {
-    return request<StockFinancial>(`/stock/${code}/financial`);
+    return request<StockFinancial>(`/stock/${code}/financial`, undefined, STOCK_API_BASE);
   },
 
   // 获取完整股票数据（行情+财务）
   getFullData: async (code: string): Promise<StockFullData> => {
-    return request<StockFullData>(`/stock/${code}/full`);
+    return request<StockFullData>(`/stock/${code}/full`, undefined, STOCK_API_BASE);
   },
 };
 
