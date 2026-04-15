@@ -46,6 +46,9 @@ def create_app():
     from routes.agent_ns import agent_ns
     api.add_namespace(agent_ns, path='/agent')
     
+    from routes.stock_ns import stock_ns
+    api.add_namespace(stock_ns, path='/stock')
+    
     # 健康检查
     @app.route('/health')
     def health_check():
