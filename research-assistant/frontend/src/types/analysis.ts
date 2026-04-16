@@ -140,3 +140,55 @@ export interface SSEChunk {
     excerpt: string;
   }>;
 }
+
+// ========== 导出相关类型 ==========
+
+export type ExportFormat = 'markdown' | 'json' | 'csv';
+export type ExportScope = 'full' | 'summary' | 'differences';
+
+export interface ExportRequest {
+  report_ids: string[];
+  compare_type: string;
+  dimensions: string[];
+  format: ExportFormat;
+}
+
+// ========== 会话搜索相关类型 ==========
+
+export interface SessionQueryParams {
+  search?: string;
+  tags?: string[];
+  page?: number;
+  page_size?: number;
+}
+
+export interface PaginatedSessions {
+  sessions: ChatSession[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// ========== 统一错误结构 ==========
+
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: string;
+}
+
+// ========== 扩展 ChatSession 接口 ==========
+
+// 扩展后的 ChatSession（包含 tags）
+export interface ChatSessionWithTags extends ChatSession {
+  tags?: string[];
+}
+
+// 会话分组类型
+export type SessionGroupType = 'pinned' | 'today' | 'week' | 'earlier';
+
+export interface GroupedSessions {
+  type: SessionGroupType;
+  label: string;
+  sessions: ChatSessionWithTags[];
+}

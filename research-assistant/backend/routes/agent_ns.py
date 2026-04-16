@@ -5,6 +5,10 @@
 import os
 import uuid
 import json
+import logging
+import csv
+import io
+from datetime import datetime
 from flask import request, current_app, send_file, send_from_directory, Response, stream_with_context
 from flask_restx import Namespace, Resource, fields, reqparse
 from werkzeug.utils import secure_filename
@@ -15,8 +19,10 @@ from storage.chat_storage import ChatStorage
 from services.parser import ReportParser
 from services.ai_service import ai_service
 from services.report_fetcher import report_fetcher
-import os
 import mimetypes
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 # 创建命名空间
 agent_ns = Namespace('agent', description='研报管理相关接口')
@@ -31,6 +37,296 @@ parser = ReportParser()
 def generate_trace_id():
     """生成追踪ID"""
     return str(uuid.uuid4())[:12]
+
+
+def create_error_response(code: str, message: str, details: str = None, status_code: int = 400):
+    """创建统一错误响应
+    
+    Args:
+        code: 错误码
+        message: 错误信息
+        details: 详细错误信息（可选）
+        status_code: HTTP状态码
+        
+    Returns:
+        (响应字典, HTTP状态码) 元组
+    """
+    response = {
+        'error': {
+            'code': code,
+            'message': message,
+        },
+        'trace_id': generate_trace_id()
+    }
+    if details:
+        response['error']['details'] = details
+    return response, status_code
+
+
+def log_request(endpoint: str, method: str, start_time: float = None, status: str = 'success', error: str = None):
+    """记录请求日志
+    
+    Args:
+        endpoint: 端点名称
+        method: HTTP方法
+        start_time: 请求开始时间（用于计算耗时）
+        status: 请求状态
+        error: 错误信息
+    """
+    elapsed = None
+    if start_time:
+        elapsed = (datetime.now().timestamp() - start_time) * 1000  # 毫秒
+    
+    log_data = {
+        'endpoint': endpoint,
+        'method': method,
+        'status': status,
+    }
+    if elapsed is not None:
+        log_data['elapsed_ms'] = round(elapsed, 2)
+    if error:
+        log_data['error'] = error
+    
+    if status == 'error':
+        logger.error(f"Request log: {json.dumps(log_data, ensure_ascii=False)}")
+    else:
+        logger.info(f"Request log: {json.dumps(log_data, ensure_ascii=False)}")
+
+
+class PromptTemplates:
+    """提示词模板类 - 集中管理所有提示词模板"""
+    
+    # 对比分析提示词模板
+    COMPARE_PROMPT_TEMPLATE = """请对以下{report_count}份研报进行{compare_type_name}对比分析。
+
+{reports_info}
+
+请按以下格式输出分析结果，使用 ### 作为各部分的分隔符：
+
+###分析总结
+（总体对比分析的总结，200字以内）
+
+###共同点
+1. （共同点1）
+2. （共同点2）
+3. （共同点3）
+
+###差异点
+1. （差异点1）
+2. （差异点2）
+3. （差异点3）
+
+###投资建议
+1. （建议1）
+2. （建议2）
+3. （建议3）
+{dimensions_section}"""
+
+    # 对比分析维度模板
+    COMPARE_DIMENSION_TEMPLATE = """
+此外，请针对以下维度分别进行详细分析，每个维度输出总结和要点：
+
+{dimensions_detail}
+每个维度请按如下格式输出：
+###维度-维度名称
+总结：（一句话总结）
+1. （要点1）
+2. （要点2）
+3. （要点3）
+"""
+
+    # 问答提示词模板
+    QUERY_PROMPT_TEMPLATE = """你是一位专业的证券分析师，请基于以下研报内容回答问题。
+
+【参考研报】
+{reports_info}
+
+【研报摘要信息】
+{reports_summary}
+
+【用户问题】
+{question}
+
+请基于以上研报内容，给出专业、准确的回答。如果研报中没有相关信息，请明确说明。
+
+回答要求：
+1. 基于研报事实，不要编造信息
+2. 如果涉及数据，请引用具体数值
+3. 如果有多份研报，请综合对比分析
+4. 如有风险提示，请明确说明"""
+
+    # 研报信息模板
+    REPORT_INFO_TEMPLATE = """
+研报{index}: {title}
+公司: {company} ({company_code})
+券商: {broker}
+分析师: {analyst}
+评级: {rating}
+目标价: {target_price}
+核心观点: {core_views}
+{additional_info}"""
+
+    # 维度定义
+    DIMENSION_DEFINITIONS = {
+        'rating': {
+            'label': '投资评级',
+            'prompt': '对比各研报的投资评级、目标价、评级变化，总结评级异同，列出3条要点'
+        },
+        'financial': {
+            'label': '财务预测',
+            'prompt': '对比各研报的营收/净利润/EPS预测、盈利能力、成长性、估值指标，总结财务预测异同，列出3条要点'
+        },
+        'views': {
+            'label': '核心观点',
+            'prompt': '对比各研报的核心观点、投资逻辑、风险提示，总结观点异同，列出3条要点'
+        },
+        'analyst': {
+            'label': '券商分析师',
+            'prompt': '对比不同券商/分析师的视角差异、分歧焦点、推荐力度，总结分析师观点差异，列出3条要点'
+        }
+    }
+    
+    @classmethod
+    def build_compare_prompt(cls, reports: list, compare_type: str, dimensions: list = None) -> str:
+        """构建对比分析提示词
+        
+        Args:
+            reports: 研报列表
+            compare_type: 对比类型 (company/industry/custom)
+            dimensions: 对比维度列表
+            
+        Returns:
+            构建好的提示词
+        """
+        type_names = {
+            'company': '公司',
+            'industry': '行业',
+            'custom': '综合'
+        }
+        
+        # 构建研报信息
+        reports_info = ''
+        for i, report in enumerate(reports, 1):
+            reports_info += cls._build_single_report_info(i, report)
+        
+        # 构建维度部分
+        dimensions_section = ''
+        if dimensions:
+            dimensions_detail = ''
+            for dim in dimensions:
+                dim_def = cls.DIMENSION_DEFINITIONS.get(dim, {'label': dim, 'prompt': ''})
+                dimensions_detail += f"\n###维度-{dim_def['label']}\n（{dim_def['prompt']}）\n"
+            dimensions_section = cls.COMPARE_DIMENSION_TEMPLATE.format(
+                dimensions_detail=dimensions_detail
+            )
+        
+        return cls.COMPARE_PROMPT_TEMPLATE.format(
+            report_count=len(reports),
+            compare_type_name=type_names.get(compare_type, '综合'),
+            reports_info=reports_info,
+            dimensions_section=dimensions_section
+        )
+    
+    @classmethod
+    def _build_single_report_info(cls, index: int, report: dict) -> str:
+        """构建单份研报信息"""
+        additional_info = ''
+        
+        # 投资评级
+        investment_rating = report.get('investment_rating', {})
+        if investment_rating:
+            additional_info += f"投资建议: {investment_rating.get('recommendation', '-')}\n"
+        
+        # 盈利能力
+        profitability = report.get('profitability', {})
+        if profitability:
+            additional_info += f"盈利能力: 营收{profitability.get('revenue', '-')}亿, 毛利率{profitability.get('gross_margin', '-')}%, 净利率{profitability.get('net_margin', '-')}%, ROE{profitability.get('roe', '-')}%\n"
+        
+        # 成长性
+        growth = report.get('growth', {})
+        if growth:
+            additional_info += f"成长性: 营收增速{growth.get('revenue_growth', '-')}%, 利润增速{growth.get('profit_growth', '-')}%, 3年CAGR{growth.get('cagr_3y', '-')}%\n"
+        
+        # 估值
+        valuation = report.get('valuation', {})
+        if valuation:
+            additional_info += f"估值: PE-TTM {valuation.get('pe_ttm', '-')}, PB {valuation.get('pb', '-')}, PEG {valuation.get('peg', '-')}, EV/EBITDA {valuation.get('ev_ebitda', '-')}\n"
+        
+        # 偿债能力
+        solvency = report.get('solvency', {})
+        if solvency:
+            additional_info += f"偿债能力: 资产负债率{solvency.get('debt_to_asset', '-')}%, 流动比率{solvency.get('current_ratio', '-')}\n"
+        
+        # 现金流
+        cashflow = report.get('cashflow', {})
+        if cashflow:
+            additional_info += f"现金流: 经营性{cashflow.get('operating_cashflow', '-')}亿, 自由现金流{cashflow.get('free_cashflow', '-')}亿\n"
+        
+        # 财务预测
+        if report.get('financial_forecast'):
+            additional_info += f"财务预测: {str(report['financial_forecast'])}\n"
+        
+        return cls.REPORT_INFO_TEMPLATE.format(
+            index=index,
+            title=report.get('title', '未命名'),
+            company=report.get('company', '-'),
+            company_code=report.get('company_code', '-'),
+            broker=report.get('broker', '-'),
+            analyst=report.get('analyst', '-'),
+            rating=report.get('rating', '-'),
+            target_price=report.get('target_price', '-'),
+            core_views=report.get('core_views', '-'),
+            additional_info=additional_info
+        )
+    
+    @classmethod
+    def build_query_prompt(cls, question: str, reports: list) -> str:
+        """构建问答提示词
+        
+        Args:
+            question: 用户问题
+            reports: 研报列表
+            
+        Returns:
+            构建好的提示词
+        """
+        # 构建研报信息
+        reports_info = ''
+        for i, report in enumerate(reports, 1):
+            reports_info += cls._build_single_report_info(i, report)
+        
+        # 构建摘要信息
+        reports_summary = cls._build_reports_summary(reports)
+        
+        return cls.QUERY_PROMPT_TEMPLATE.format(
+            reports_info=reports_info,
+            reports_summary=reports_summary,
+            question=question
+        )
+    
+    @classmethod
+    def _build_reports_summary(cls, reports: list) -> str:
+        """构建研报摘要信息"""
+        if not reports:
+            return '无参考研报'
+        
+        summary_parts = []
+        
+        # 统计信息
+        companies = list(set([r.get('company', '') for r in reports if r.get('company')]))
+        brokers = list(set([r.get('broker', '') for r in reports if r.get('broker')]))
+        ratings = list(set([r.get('rating', '') for r in reports if r.get('rating')]))
+        
+        summary_parts.append(f"涉及公司: {', '.join(companies) if companies else '未指定'}")
+        summary_parts.append(f"券商来源: {', '.join(brokers) if brokers else '未指定'}")
+        summary_parts.append(f"评级分布: {', '.join(ratings) if ratings else '未指定'}")
+        
+        # 价格区间
+        target_prices = [r.get('target_price') for r in reports if r.get('target_price')]
+        if target_prices:
+            summary_parts.append(f"目标价区间: {min(target_prices)} - {max(target_prices)}")
+        
+        return '\n'.join(summary_parts)
 
 
 # ============ API Models (用于Swagger文档) ============
@@ -672,6 +968,17 @@ query_response_model = agent_ns.model('QueryResponse', {
 })
 
 
+# 对比分析结果缓存（简单内存缓存）
+_compare_cache = {}
+
+
+def _get_cache_key(report_ids: list, compare_type: str, dimensions: list) -> str:
+    """生成缓存键"""
+    ids_str = ','.join(sorted(report_ids))
+    dims_str = ','.join(sorted(dimensions)) if dimensions else ''
+    return f"{ids_str}|{compare_type}|{dims_str}"
+
+
 @agent_ns.route('/analysis/compare')
 class AnalysisCompare(Resource):
     """研报对比分析接口"""
@@ -679,48 +986,71 @@ class AnalysisCompare(Resource):
     @agent_ns.doc('compare_reports')
     @agent_ns.expect(compare_request_model)
     @agent_ns.response(200, '分析成功', success_response_model)
+    @agent_ns.response(400, '参数错误', error_response_model)
+    @agent_ns.response(500, 'AI服务错误', error_response_model)
     def post(self):
         """
         对比分析多份研报
         
         使用AI对选中的研报进行对比分析，找出共同点和差异
         """
-        data = request.get_json()
-        report_ids = data.get('report_ids', [])
-        compare_type = data.get('compare_type', 'company')
-        dimensions = data.get('dimensions', [])
+        start_time = datetime.now().timestamp()
         
-        if len(report_ids) < 2:
-            return {'code': 'INVALID_PARAMS', 'message': '请至少选择2份研报', 'data': None, 'trace_id': generate_trace_id()}, 400
-        
-        # 获取研报详情
-        reports = []
-        for rid in report_ids:
-            report = report_storage.get(rid)
-            if report:
-                reports.append(report)
-        
-        if len(reports) < 2:
-            return {'code': 'INVALID_PARAMS', 'message': '有效的研报数量不足', 'data': None, 'trace_id': generate_trace_id()}, 400
-        
-        # 构建对比提示词（含维度）
-        prompt = _build_compare_prompt(reports, compare_type, dimensions)
-        
-        # 调用AI生成对比分析
-        ai_result = ai_service.generate_text(prompt, max_tokens=4000)
-        
-        if not ai_result['success']:
-            return {'code': 'AI_ERROR', 'message': ai_result['error'], 'data': None, 'trace_id': generate_trace_id()}, 500
-        
-        # 解析AI返回的结果（含维度）
-        result = _parse_compare_result(ai_result['text'], dimensions)
-        
-        return {
-            'code': 0,
-            'message': 'success',
-            'data': result,
-            'trace_id': generate_trace_id()
-        }
+        try:
+            data = request.get_json()
+            report_ids = data.get('report_ids', [])
+            compare_type = data.get('compare_type', 'company')
+            dimensions = data.get('dimensions', [])
+            
+            if len(report_ids) < 2:
+                log_request('/analysis/compare', 'POST', start_time, 'error', '请至少选择2份研报')
+                return create_error_response('INVALID_PARAMS', '请至少选择2份研报', status_code=400)
+            
+            # 获取研报详情
+            reports = []
+            for rid in report_ids:
+                report = report_storage.get(rid)
+                if report:
+                    reports.append(report)
+            
+            if len(reports) < 2:
+                log_request('/analysis/compare', 'POST', start_time, 'error', '有效的研报数量不足')
+                return create_error_response('INVALID_PARAMS', '有效的研报数量不足', status_code=400)
+            
+            # 构建对比提示词（使用新的提示词模板）
+            prompt = PromptTemplates.build_compare_prompt(reports, compare_type, dimensions)
+            
+            # 调用AI生成对比分析（使用30秒超时）
+            ai_result = ai_service.generate_text(prompt, max_tokens=4000, timeout=30)
+            
+            if not ai_result['success']:
+                error_code = ai_result.get('error_code', 'AI_ERROR')
+                log_request('/analysis/compare', 'POST', start_time, 'error', ai_result['error'])
+                return create_error_response(error_code, ai_result['error'], status_code=500)
+            
+            # 解析AI返回的结果（含维度）
+            result = _parse_compare_result(ai_result['text'], dimensions)
+            
+            # 缓存结果
+            cache_key = _get_cache_key(report_ids, compare_type, dimensions)
+            _compare_cache[cache_key] = {
+                'result': result,
+                'reports': reports,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            log_request('/analysis/compare', 'POST', start_time, 'success')
+            
+            return {
+                'code': 0,
+                'message': 'success',
+                'data': result,
+                'trace_id': generate_trace_id()
+            }
+        except Exception as e:
+            logger.exception("对比分析异常")
+            log_request('/analysis/compare', 'POST', start_time, 'error', str(e))
+            return create_error_response('INTERNAL_ERROR', '分析过程中发生错误', str(e), status_code=500)
 
 
 @agent_ns.route('/analysis/query')
@@ -730,53 +1060,67 @@ class AnalysisQuery(Resource):
     @agent_ns.doc('ai_query')
     @agent_ns.expect(query_request_model)
     @agent_ns.response(200, '查询成功', success_response_model)
+    @agent_ns.response(400, '参数错误', error_response_model)
+    @agent_ns.response(500, 'AI服务错误', error_response_model)
     def post(self):
         """
         AI智能问答
         
         基于研报内容进行智能问答
         """
-        data = request.get_json()
-        question = data.get('question', '')
-        report_ids = data.get('report_ids', [])
+        start_time = datetime.now().timestamp()
         
-        if not question:
-            return {'code': 'EMPTY_QUESTION', 'message': '问题不能为空', 'data': None, 'trace_id': generate_trace_id()}, 400
-        
-        # 获取参考研报
-        reports = []
-        if report_ids:
-            for rid in report_ids:
-                report = report_storage.get(rid)
-                if report:
-                    reports.append(report)
-        else:
-            # 如果没有指定，使用所有已完成的研报
-            all_reports = report_storage.list(page_size=100)
-            reports = [r for r in all_reports['items'] if r['status'] == 'completed'][:5]
-        
-        # 构建问答提示词
-        prompt = _build_query_prompt(question, reports)
-        
-        # 调用AI生成回答
-        ai_result = ai_service.generate_text(prompt, max_tokens=2500)
-        
-        if not ai_result['success']:
-            return {'code': 'AI_ERROR', 'message': ai_result['error'], 'data': None, 'trace_id': generate_trace_id()}, 500
-        
-        # 构建响应
-        result = {
-            'answer': ai_result['text'],
-            'sources': [{'report_id': r['id'], 'report_title': r['title'], 'excerpt': r['core_views'][:100] + '...'} for r in reports[:3]],
-            'confidence': 0.85
-        }
-        
-        return {
-            'code': 0,
-            'message': 'success',
-            'data': result,
-            'trace_id': generate_trace_id()
-        }
+        try:
+            data = request.get_json()
+            question = data.get('question', '')
+            report_ids = data.get('report_ids', [])
+            
+            if not question:
+                log_request('/analysis/query', 'POST', start_time, 'error', '问题不能为空')
+                return create_error_response('EMPTY_QUESTION', '问题不能为空', status_code=400)
+            
+            # 获取参考研报
+            reports = []
+            if report_ids:
+                for rid in report_ids:
+                    report = report_storage.get(rid)
+                    if report:
+                        reports.append(report)
+            else:
+                # 如果没有指定，使用所有已完成的研报
+                all_reports = report_storage.list(page_size=100)
+                reports = [r for r in all_reports['items'] if r['status'] == 'completed'][:5]
+            
+            # 构建问答提示词（使用新的提示词模板）
+            prompt = PromptTemplates.build_query_prompt(question, reports)
+            
+            # 调用AI生成回答（使用30秒超时）
+            ai_result = ai_service.generate_text(prompt, max_tokens=2500, timeout=30)
+            
+            if not ai_result['success']:
+                error_code = ai_result.get('error_code', 'AI_ERROR')
+                log_request('/analysis/query', 'POST', start_time, 'error', ai_result['error'])
+                return create_error_response(error_code, ai_result['error'], status_code=500)
+            
+            # 构建响应
+            result = {
+                'answer': ai_result['text'],
+                'sources': [{'report_id': r['id'], 'report_title': r['title'], 'excerpt': (r.get('core_views', '') or '-')[:100] + '...'} for r in reports[:3]],
+                'confidence': 0.85
+            }
+            
+            log_request('/analysis/query', 'POST', start_time, 'success')
+            
+            return {
+                'code': 0,
+                'message': 'success',
+                'data': result,
+                'trace_id': generate_trace_id()
+            }
+        except Exception as e:
+            logger.exception("AI问答异常")
+            log_request('/analysis/query', 'POST', start_time, 'error', str(e))
+            return create_error_response('INTERNAL_ERROR', '问答过程中发生错误', str(e), status_code=500)
 
 
 # ============ 流式问答请求模型 ============
@@ -794,97 +1138,164 @@ class AnalysisQueryStream(Resource):
 
     @agent_ns.doc('ai_query_stream')
     @agent_ns.expect(stream_request_model)
+    @agent_ns.response(400, '参数错误', error_response_model)
     def post(self):
         """
         流式AI智能问答
 
         基于研报内容进行流式问答，通过SSE逐步推送回答内容
         """
-        data = request.get_json()
-        question = data.get('question', '')
-        report_ids = data.get('report_ids', [])
-        session_id = data.get('session_id', '')
+        start_time = datetime.now().timestamp()
+        
+        try:
+            data = request.get_json()
+            question = data.get('question', '')
+            report_ids = data.get('report_ids', [])
+            session_id = data.get('session_id', '')
 
-        if not question:
-            return {'code': 'EMPTY_QUESTION', 'message': '问题不能为空', 'data': None, 'trace_id': generate_trace_id()}, 400
+            if not question:
+                log_request('/analysis/query-stream', 'POST', start_time, 'error', '问题不能为空')
+                return create_error_response('EMPTY_QUESTION', '问题不能为空', status_code=400)
 
-        # 会话管理：自动创建或复用会话
-        if session_id:
-            session = chat_storage.get_session(session_id)
-            if not session:
-                session_id = ''
-        if not session_id:
-            session = chat_storage.create_session(
-                title=question[:30],
-                report_ids=report_ids or []
-            )
-            session_id = session['id']
+            # 会话管理：自动创建或复用会话
+            if session_id:
+                session = chat_storage.get_session(session_id)
+                if not session:
+                    session_id = ''
+            if not session_id:
+                session = chat_storage.create_session(
+                    title=question[:30],
+                    report_ids=report_ids or []
+                )
+                session_id = session['id']
 
-        # 保存用户消息
-        chat_storage.add_message(session_id, 'user', question)
+            # 保存用户消息
+            chat_storage.add_message(session_id, 'user', question)
 
-        # 获取参考研报
-        reports = []
-        if report_ids:
-            for rid in report_ids:
-                report = report_storage.get(rid)
-                if report:
-                    reports.append(report)
-        else:
-            all_reports = report_storage.list(page_size=100)
-            reports = [r for r in all_reports['items'] if r['status'] == 'completed'][:5]
+            # 获取参考研报
+            reports = []
+            if report_ids:
+                for rid in report_ids:
+                    report = report_storage.get(rid)
+                    if report:
+                        reports.append(report)
+            else:
+                all_reports = report_storage.list(page_size=100)
+                reports = [r for r in all_reports['items'] if r['status'] == 'completed'][:5]
 
-        # 构建问答提示词
-        prompt = _build_query_prompt(question, reports)
+            # 构建问答提示词（使用新的提示词模板）
+            prompt = PromptTemplates.build_query_prompt(question, reports)
 
-        # 构建来源信息
-        sources = [
-            {
-                'report_id': r['id'],
-                'report_title': r['title'],
-                'excerpt': (r.get('core_views', '') or '-')[:100] + '...'
-            }
-            for r in reports[:3]
-        ]
+            # 构建来源信息
+            sources = [
+                {
+                    'report_id': r['id'],
+                    'report_title': r['title'],
+                    'excerpt': (r.get('core_views', '') or '-')[:100] + '...'
+                }
+                for r in reports[:3]
+            ]
 
-        current_session_id = session_id
+            current_session_id = session_id
 
-        def generate():
-            full_answer = []
-            try:
-                # 第一条就返回 session_id
-                payload = json.dumps({'content': '', 'done': False, 'session_id': current_session_id}, ensure_ascii=False)
-                yield f'data: {payload}\n\n'
-
-                for chunk in ai_service.stream_generate_text(prompt, max_tokens=2500):
-                    if chunk.startswith('[ERROR]'):
-                        payload = json.dumps({'content': '', 'done': False, 'error': chunk[8:]}, ensure_ascii=False)
-                        yield f'data: {payload}\n\n'
-                        return
-                    full_answer.append(chunk)
-                    payload = json.dumps({'content': chunk, 'done': False}, ensure_ascii=False)
+            def generate():
+                full_answer = []
+                client_disconnected = False
+                
+                try:
+                    # 第一条就返回 session_id
+                    payload = json.dumps({'content': '', 'done': False, 'session_id': current_session_id}, ensure_ascii=False)
                     yield f'data: {payload}\n\n'
 
-                # 保存AI回答到会话
-                answer_text = ''.join(full_answer)
-                chat_storage.add_message(current_session_id, 'assistant', answer_text, sources)
+                    for chunk in ai_service.stream_generate_text(prompt, max_tokens=2500, timeout=60):
+                        # 检测客户端是否断开连接
+                        if not client_disconnected:
+                            try:
+                                # 检查请求是否已被取消（Flask会抛出异常）
+                                # 这里通过尝试yield来检测连接状态
+                                pass
+                            except GeneratorExit:
+                                client_disconnected = True
+                                logger.info("客户端断开连接，停止生成")
+                                break
+                        
+                        if chunk.startswith('[ERROR]'):
+                            error_parts = chunk[8:].split('|', 1)
+                            error_msg = error_parts[0]
+                            error_code = error_parts[1] if len(error_parts) > 1 else 'AI_ERROR'
+                            payload = json.dumps({'content': '', 'done': False, 'error': error_msg, 'error_code': error_code}, ensure_ascii=False)
+                            yield f'data: {payload}\n\n'
+                            return
+                        
+                        if client_disconnected:
+                            break
+                            
+                        full_answer.append(chunk)
+                        payload = json.dumps({'content': chunk, 'done': False}, ensure_ascii=False)
+                        yield f'data: {payload}\n\n'
 
-                # 完成
-                payload = json.dumps({'content': '', 'done': True, 'sources': sources, 'session_id': current_session_id}, ensure_ascii=False)
-                yield f'data: {payload}\n\n'
-            except Exception as e:
-                payload = json.dumps({'content': '', 'done': False, 'error': str(e)}, ensure_ascii=False)
-                yield f'data: {payload}\n\n'
+                    if not client_disconnected:
+                        # 保存AI回答到会话
+                        answer_text = ''.join(full_answer)
+                        chat_storage.add_message(current_session_id, 'assistant', answer_text, sources)
 
-        return Response(
-            stream_with_context(generate()),
-            mimetype='text/event-stream',
-            headers={
-                'Cache-Control': 'no-cache',
-                'X-Accel-Buffering': 'no',
-                'Connection': 'keep-alive',
-            }
-        )
+                        # 完成
+                        payload = json.dumps({'content': '', 'done': True, 'sources': sources, 'session_id': current_session_id}, ensure_ascii=False)
+                        yield f'data: {payload}\n\n'
+                        
+                        elapsed = (datetime.now().timestamp() - start_time) * 1000
+                        logger.info(f"流式问答完成，session_id={current_session_id}, 耗时={elapsed:.2f}ms")
+                except GeneratorExit:
+                    # 客户端断开连接
+                    logger.info(f"客户端断开连接，session_id={current_session_id}")
+                    # 尝试保存已生成的内容
+                    if full_answer:
+                        try:
+                            answer_text = ''.join(full_answer)
+                            chat_storage.add_message(current_session_id, 'assistant', answer_text + '\n\n[用户中断]', sources)
+                        except Exception as e:
+                            logger.error(f"保存中断消息失败: {e}")
+                    raise
+                except Exception as e:
+                    logger.exception("流式生成异常")
+                    payload = json.dumps({'content': '', 'done': False, 'error': str(e), 'error_code': 'STREAM_ERROR'}, ensure_ascii=False)
+                    yield f'data: {payload}\n\n'
+
+            log_request('/analysis/query-stream', 'POST', start_time, 'success')
+            
+            return Response(
+                stream_with_context(generate()),
+                mimetype='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'X-Accel-Buffering': 'no',
+                    'Connection': 'keep-alive',
+                }
+            )
+        except Exception as e:
+            logger.exception("流式问答异常")
+            log_request('/analysis/query-stream', 'POST', start_time, 'error', str(e))
+            return create_error_response('INTERNAL_ERROR', '流式问答过程中发生错误', str(e), status_code=500)
+
+
+# ============ 数据导出相关模型 ============
+
+export_request_model = agent_ns.model('ExportRequest', {
+    'report_ids': fields.List(fields.String, required=True, description='研报ID列表'),
+    'compare_type': fields.String(required=True, description='对比类型', enum=['company', 'industry', 'custom']),
+    'dimensions': fields.List(fields.String, required=False, description='对比维度列表', example=['rating', 'financial', 'views', 'analyst']),
+    'format': fields.String(required=True, description='导出格式', enum=['markdown', 'json', 'csv'], default='markdown'),
+})
+
+export_response_model = agent_ns.model('ExportResponse', {
+    'format': fields.String(description='导出格式'),
+    'content': fields.String(description='导出内容'),
+    'filename': fields.String(description='建议文件名'),
+})
+
+session_export_parser = reqparse.RequestParser()
+session_export_parser.add_argument('format', type=str, default='markdown', help='导出格式', location='args')
+session_export_parser.add_argument('include_sources', type=bool, default=True, help='是否包含来源', location='args')
 
 
 # ============ 会话管理 API ============
@@ -892,11 +1303,248 @@ class AnalysisQueryStream(Resource):
 session_create_model = agent_ns.model('SessionCreate', {
     'title': fields.String(description='会话标题', example='新对话'),
     'report_ids': fields.List(fields.String, description='关联研报ID列表'),
+    'tags': fields.List(fields.String, description='会话标签列表', example=['重要', '待跟进']),
 })
 
 session_update_model = agent_ns.model('SessionUpdate', {
-    'title': fields.String(required=True, description='会话标题'),
+    'title': fields.String(required=False, description='会话标题'),
+    'tags': fields.List(fields.String, required=False, description='会话标签列表', example=['重要', '待跟进']),
 })
+
+session_list_parser = reqparse.RequestParser()
+session_list_parser.add_argument('page', type=int, default=1, help='页码', location='args')
+session_list_parser.add_argument('page_size', type=int, default=20, help='每页数量', location='args')
+session_list_parser.add_argument('search', type=str, help='搜索关键词', location='args')
+session_list_parser.add_argument('tags', type=str, help='标签过滤（多个标签用逗号分隔）', location='args')
+
+
+@agent_ns.route('/analysis/export')
+class AnalysisExport(Resource):
+    """对比结果导出接口"""
+    
+    @agent_ns.doc('export_analysis')
+    @agent_ns.expect(export_request_model)
+    @agent_ns.response(200, '导出成功')
+    @agent_ns.response(400, '参数错误', error_response_model)
+    @agent_ns.response(404, '无缓存数据', error_response_model)
+    def post(self):
+        """
+        导出对比分析结果
+        
+        支持导出为 Markdown、JSON 或 CSV 格式。
+        如果有缓存的对比结果直接导出，否则先执行对比再导出。
+        """
+        start_time = datetime.now().timestamp()
+        
+        try:
+            data = request.get_json()
+            report_ids = data.get('report_ids', [])
+            compare_type = data.get('compare_type', 'company')
+            dimensions = data.get('dimensions', [])
+            export_format = data.get('format', 'markdown')
+            
+            if len(report_ids) < 2:
+                return create_error_response('INVALID_PARAMS', '请至少选择2份研报', status_code=400)
+            
+            if export_format not in ['markdown', 'json', 'csv']:
+                return create_error_response('INVALID_FORMAT', '不支持的导出格式，请选择 markdown、json 或 csv', status_code=400)
+            
+            # 检查缓存
+            cache_key = _get_cache_key(report_ids, compare_type, dimensions)
+            cached_data = _compare_cache.get(cache_key)
+            
+            if cached_data:
+                # 使用缓存数据
+                result = cached_data['result']
+                reports = cached_data['reports']
+                logger.info(f"使用缓存的对比结果导出，cache_key={cache_key}")
+            else:
+                # 没有缓存，先执行对比
+                logger.info(f"无缓存数据，先执行对比分析")
+                
+                # 获取研报详情
+                reports = []
+                for rid in report_ids:
+                    report = report_storage.get(rid)
+                    if report:
+                        reports.append(report)
+                
+                if len(reports) < 2:
+                    return create_error_response('INVALID_PARAMS', '有效的研报数量不足', status_code=400)
+                
+                # 构建对比提示词
+                prompt = PromptTemplates.build_compare_prompt(reports, compare_type, dimensions)
+                
+                # 调用AI生成对比分析
+                ai_result = ai_service.generate_text(prompt, max_tokens=4000, timeout=30)
+                
+                if not ai_result['success']:
+                    error_code = ai_result.get('error_code', 'AI_ERROR')
+                    return create_error_response(error_code, ai_result['error'], status_code=500)
+                
+                # 解析结果
+                result = _parse_compare_result(ai_result['text'], dimensions)
+                
+                # 缓存结果
+                _compare_cache[cache_key] = {
+                    'result': result,
+                    'reports': reports,
+                    'timestamp': datetime.now().isoformat()
+                }
+            
+            # 根据格式导出
+            if export_format == 'markdown':
+                content = _export_to_markdown(result, reports, compare_type, dimensions)
+                mimetype = 'text/markdown'
+                filename = f"对比分析_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+            elif export_format == 'json':
+                content = json.dumps({
+                    'export_time': datetime.now().isoformat(),
+                    'compare_type': compare_type,
+                    'dimensions': dimensions,
+                    'reports': [{'id': r['id'], 'title': r['title'], 'company': r.get('company')} for r in reports],
+                    'result': result
+                }, ensure_ascii=False, indent=2)
+                mimetype = 'application/json'
+                filename = f"对比分析_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            else:  # csv
+                content = _export_to_csv(result, reports)
+                mimetype = 'text/csv'
+                filename = f"对比分析_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            
+            log_request('/analysis/export', 'POST', start_time, 'success')
+            
+            # 返回文件内容
+            return Response(
+                content,
+                mimetype=mimetype,
+                headers={
+                    'Content-Disposition': f'attachment; filename={filename}'
+                }
+            )
+            
+        except Exception as e:
+            logger.exception("导出分析结果异常")
+            log_request('/analysis/export', 'POST', start_time, 'error', str(e))
+            return create_error_response('INTERNAL_ERROR', '导出过程中发生错误', str(e), status_code=500)
+
+
+def _export_to_markdown(result: dict, reports: list, compare_type: str, dimensions: list) -> str:
+    """导出为 Markdown 格式"""
+    lines = []
+    
+    lines.append('# 研报对比分析报告')
+    lines.append('')
+    lines.append(f'**生成时间**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    lines.append(f'**对比类型**: {compare_type}')
+    lines.append('')
+    
+    lines.append('## 对比研报')
+    lines.append('')
+    for i, report in enumerate(reports, 1):
+        lines.append(f'{i}. **{report.get("title", "未命名")}**')
+        lines.append(f'   - 公司: {report.get("company", "-")} ({report.get("company_code", "-")})')
+        lines.append(f'   - 券商: {report.get("broker", "-")}')
+        lines.append(f'   - 分析师: {report.get("analyst", "-")}')
+        lines.append(f'   - 评级: {report.get("rating", "-")}')
+        lines.append('')
+    
+    lines.append('## 分析总结')
+    lines.append('')
+    lines.append(result.get('comparison_result', '无'))
+    lines.append('')
+    
+    lines.append('## 共同点')
+    lines.append('')
+    for item in result.get('similarities', []):
+        lines.append(f'- {item}')
+    lines.append('')
+    
+    lines.append('## 差异点')
+    lines.append('')
+    for item in result.get('differences', []):
+        lines.append(f'- {item}')
+    lines.append('')
+    
+    lines.append('## 投资建议')
+    lines.append('')
+    for item in result.get('recommendations', []):
+        lines.append(f'- {item}')
+    lines.append('')
+    
+    # 维度分析
+    if dimensions and result.get('dimension_results'):
+        lines.append('## 维度分析')
+        lines.append('')
+        for dim_result in result.get('dimension_results', []):
+            lines.append(f'### {dim_result.get("dimension_label", "未知维度")}')
+            lines.append('')
+            if dim_result.get('summary'):
+                lines.append(f'**总结**: {dim_result["summary"]}')
+                lines.append('')
+            lines.append('**要点**:')
+            for detail in dim_result.get('details', []):
+                lines.append(f'- {detail}')
+            lines.append('')
+    
+    return '\n'.join(lines)
+
+
+def _export_to_csv(result: dict, reports: list) -> str:
+    """导出为 CSV 格式"""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # 写入基本信息
+    writer.writerow(['对比分析报告'])
+    writer.writerow(['生成时间', datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+    writer.writerow([])
+    
+    # 写入研报信息
+    writer.writerow(['研报信息'])
+    writer.writerow(['序号', '标题', '公司', '券商', '分析师', '评级'])
+    for i, report in enumerate(reports, 1):
+        writer.writerow([
+            i,
+            report.get('title', ''),
+            report.get('company', ''),
+            report.get('broker', ''),
+            report.get('analyst', ''),
+            report.get('rating', '')
+        ])
+    writer.writerow([])
+    
+    # 写入共同点
+    writer.writerow(['共同点'])
+    for item in result.get('similarities', []):
+        writer.writerow([item])
+    writer.writerow([])
+    
+    # 写入差异点
+    writer.writerow(['差异点'])
+    for item in result.get('differences', []):
+        writer.writerow([item])
+    writer.writerow([])
+    
+    # 写入投资建议
+    writer.writerow(['投资建议'])
+    for item in result.get('recommendations', []):
+        writer.writerow([item])
+    writer.writerow([])
+    
+    # 写入维度分析
+    if result.get('dimension_results'):
+        writer.writerow(['维度分析'])
+        writer.writerow(['维度', '总结', '要点'])
+        for dim_result in result.get('dimension_results', []):
+            details = '; '.join(dim_result.get('details', []))
+            writer.writerow([
+                dim_result.get('dimension_label', ''),
+                dim_result.get('summary', ''),
+                details
+            ])
+    
+    return output.getvalue()
 
 
 @agent_ns.route('/sessions')
@@ -904,14 +1552,33 @@ class SessionList(Resource):
     """会话列表接口"""
 
     @agent_ns.doc('list_sessions')
+    @agent_ns.expect(session_list_parser)
     @agent_ns.response(200, '查询成功', success_response_model)
     def get(self):
-        """获取会话列表"""
-        sessions = chat_storage.list_sessions()
+        """获取会话列表（支持分页、搜索、标签过滤）"""
+        args = session_list_parser.parse_args()
+        page = args.get('page', 1)
+        page_size = args.get('page_size', 20)
+        search = args.get('search')
+        tags_str = args.get('tags')
+        
+        # 解析标签
+        tags = None
+        if tags_str:
+            tags = [t.strip() for t in tags_str.split(',') if t.strip()]
+        
+        # 参数校验
+        if page < 1:
+            page = 1
+        if page_size < 1 or page_size > 100:
+            page_size = 20
+        
+        result = chat_storage.list_sessions(page=page, page_size=page_size, search=search, tags=tags)
+        
         return {
             'code': 0,
             'message': 'success',
-            'data': {'sessions': sessions},
+            'data': result,
             'trace_id': generate_trace_id()
         }
 
@@ -923,7 +1590,8 @@ class SessionList(Resource):
         data = request.get_json() or {}
         title = data.get('title', '新对话')
         report_ids = data.get('report_ids', [])
-        session = chat_storage.create_session(title=title, report_ids=report_ids)
+        tags = data.get('tags', [])
+        session = chat_storage.create_session(title=title, report_ids=report_ids, tags=tags)
         return {
             'code': 0,
             'message': 'success',
@@ -957,12 +1625,18 @@ class SessionDetail(Resource):
     @agent_ns.response(200, '更新成功', success_response_model)
     @agent_ns.response(404, '会话不存在', error_response_model)
     def put(self, session_id):
-        """更新会话标题"""
+        """更新会话信息（标题和/或标签）"""
         data = request.get_json() or {}
         title = data.get('title')
-        result = chat_storage.update_session(session_id, title=title)
+        tags = data.get('tags')
+        
+        # 至少需要一个更新字段
+        if title is None and tags is None:
+            return create_error_response('INVALID_PARAMS', '请提供要更新的字段（title 或 tags）', status_code=400)
+        
+        result = chat_storage.update_session(session_id, title=title, tags=tags)
         if not result:
-            return {'code': 'SESSION_NOT_FOUND', 'message': '会话不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
+            return create_error_response('SESSION_NOT_FOUND', '会话不存在', status_code=404)
         return {
             'code': 0,
             'message': 'success',
@@ -998,13 +1672,124 @@ class SessionMessages(Resource):
         """获取会话消息历史"""
         session = chat_storage.get_session(session_id)
         if not session:
-            return {'code': 'SESSION_NOT_FOUND', 'message': '会话不存在', 'data': None, 'trace_id': generate_trace_id()}, 404
+            return create_error_response('SESSION_NOT_FOUND', '会话不存在', status_code=404)
         return {
             'code': 0,
             'message': 'success',
             'data': {'messages': session.get('messages', [])},
             'trace_id': generate_trace_id()
         }
+
+
+@agent_ns.route('/sessions/<string:session_id>/export')
+@agent_ns.param('session_id', '会话ID')
+class SessionExport(Resource):
+    """会话导出接口"""
+    
+    @agent_ns.doc('export_session')
+    @agent_ns.expect(session_export_parser)
+    @agent_ns.response(200, '导出成功')
+    @agent_ns.response(404, '会话不存在', error_response_model)
+    def get(self, session_id):
+        """
+        导出会话记录
+        
+        将会话的完整对话记录导出为 Markdown 或 JSON 格式
+        """
+        start_time = datetime.now().timestamp()
+        
+        try:
+            args = session_export_parser.parse_args()
+            export_format = args.get('format', 'markdown')
+            include_sources = args.get('include_sources', True)
+            
+            if export_format not in ['markdown', 'json']:
+                return create_error_response('INVALID_FORMAT', '不支持的导出格式，请选择 markdown 或 json', status_code=400)
+            
+            # 获取会话
+            session = chat_storage.get_session(session_id)
+            if not session:
+                return create_error_response('SESSION_NOT_FOUND', '会话不存在', status_code=404)
+            
+            messages = session.get('messages', [])
+            
+            if export_format == 'markdown':
+                content = _export_session_to_markdown(session, messages, include_sources)
+                mimetype = 'text/markdown'
+                filename = f"会话记录_{session.get('title', '未命名')[:20]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+            else:  # json
+                content = json.dumps({
+                    'export_time': datetime.now().isoformat(),
+                    'session': {
+                        'id': session['id'],
+                        'title': session['title'],
+                        'tags': session.get('tags', []),
+                        'created_at': session['created_at'],
+                        'updated_at': session['updated_at'],
+                    },
+                    'messages': messages
+                }, ensure_ascii=False, indent=2)
+                mimetype = 'application/json'
+                filename = f"会话记录_{session.get('title', '未命名')[:20]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            
+            log_request('/sessions/{id}/export', 'GET', start_time, 'success')
+            
+            return Response(
+                content,
+                mimetype=mimetype,
+                headers={
+                    'Content-Disposition': f'attachment; filename={filename}'
+                }
+            )
+            
+        except Exception as e:
+            logger.exception("导出会话异常")
+            log_request('/sessions/{id}/export', 'GET', start_time, 'error', str(e))
+            return create_error_response('INTERNAL_ERROR', '导出过程中发生错误', str(e), status_code=500)
+
+
+def _export_session_to_markdown(session: dict, messages: list, include_sources: bool) -> str:
+    """导出会话为 Markdown 格式"""
+    lines = []
+    
+    lines.append(f'# 会话记录: {session.get("title", "未命名")}')
+    lines.append('')
+    lines.append(f'**会话ID**: {session["id"]}')
+    lines.append(f'**创建时间**: {session.get("created_at", "-")}')
+    lines.append(f'**更新时间**: {session.get("updated_at", "-")}')
+    if session.get('tags'):
+        lines.append(f'**标签**: {", ".join(session["tags"])}')
+    lines.append(f'**导出时间**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    lines.append('')
+    lines.append('---')
+    lines.append('')
+    
+    for msg in messages:
+        role = msg.get('role', 'unknown')
+        content = msg.get('content', '')
+        timestamp = msg.get('timestamp', '')
+        sources = msg.get('sources', [])
+        
+        if role == 'user':
+            lines.append(f'## 👤 用户 ({timestamp})')
+        else:
+            lines.append(f'## 🤖 助手 ({timestamp})')
+        
+        lines.append('')
+        lines.append(content)
+        lines.append('')
+        
+        # 添加来源信息
+        if include_sources and sources and role == 'assistant':
+            lines.append('**参考来源**:')
+            for src in sources:
+                lines.append(f'- {src.get("report_title", "未知研报")}')
+            lines.append('')
+        
+        lines.append('---')
+        lines.append('')
+    
+    return '\n'.join(lines)
 
 
 # 维度中文名映射
@@ -1017,91 +1802,11 @@ DIMENSION_LABELS = {
 
 
 def _build_compare_prompt(reports, compare_type, dimensions=None):
-    """构建对比分析提示词（支持维度）"""
-    type_names = {
-        'company': '公司',
-        'industry': '行业',
-        'custom': '综合'
-    }
+    """构建对比分析提示词（支持维度）- 使用新的模板类
     
-    prompt = f"请对以下{len(reports)}份研报进行{type_names.get(compare_type, '综合')}对比分析。\n\n"
-    
-    for i, report in enumerate(reports, 1):
-        prompt += f"【研报{i}】\n"
-        prompt += f"标题: {report.get('title', '未命名')}\n"
-        prompt += f"公司: {report.get('company', '-')} ({report.get('company_code', '-')})\n"
-        prompt += f"券商: {report.get('broker', '-')}\n"
-        prompt += f"分析师: {report.get('analyst', '-')}\n"
-        prompt += f"评级: {report.get('rating', '-')}\n"
-        prompt += f"目标价: {report.get('target_price', '-')}\n"
-        prompt += f"核心观点: {report.get('core_views', '-')}\n"
-        
-        investment_rating = report.get('investment_rating', {})
-        if investment_rating:
-            prompt += f"投资建议: {investment_rating.get('recommendation', '-')}，期限{investment_rating.get('time_horizon', '-')}，变化{investment_rating.get('change', '-')}\n"
-        
-        profitability = report.get('profitability', {})
-        if profitability:
-            prompt += f"盈利能力: 营收{profitability.get('revenue', '-')}亿, 毛利率{profitability.get('gross_margin', '-')}%, 净利率{profitability.get('net_margin', '-')}%, ROE{profitability.get('roe', '-')}%\n"
-        
-        growth = report.get('growth', {})
-        if growth:
-            prompt += f"成长性: 营收增速{growth.get('revenue_growth', '-')}%, 利润增速{growth.get('profit_growth', '-')}%, 3年CAGR{growth.get('cagr_3y', '-')}%\n"
-        
-        valuation = report.get('valuation', {})
-        if valuation:
-            prompt += f"估值: PE-TTM {valuation.get('pe_ttm', '-')}, PB {valuation.get('pb', '-')}, PEG {valuation.get('peg', '-')}, EV/EBITDA {valuation.get('ev_ebitda', '-')}\n"
-        
-        solvency = report.get('solvency', {})
-        if solvency:
-            prompt += f"偿债能力: 资产负债率{solvency.get('debt_to_asset', '-')}%, 流动比率{solvency.get('current_ratio', '-')}\n"
-        
-        cashflow = report.get('cashflow', {})
-        if cashflow:
-            prompt += f"现金流: 经营性{cashflow.get('operating_cashflow', '-')}亿, 自由现金流{cashflow.get('free_cashflow', '-')}亿\n"
-        
-        if report.get('financial_forecast'):
-            prompt += f"财务预测: {str(report['financial_forecast'])}\n"
-        
-        prompt += "\n"
-    
-    prompt += """请按以下格式输出分析结果：
-
-【分析总结】
-（总体对比分析的总结，200字以内）
-
-【共同点】
-1. （共同点1）
-2. （共同点2）
-3. （共同点3）
-
-【差异点】
-1. （差异点1）
-2. （差异点2）
-3. （差异点3）
-
-【投资建议】
-1. （建议1）
-2. （建议2）
-3. （建议3）
-"""
-    
-    # 如果指定了维度，追加维度分析要求
-    if dimensions:
-        prompt += "\n此外，请针对以下维度分别进行详细分析，每个维度输出总结和要点：\n\n"
-        for dim in dimensions:
-            label = DIMENSION_LABELS.get(dim, dim)
-            if dim == 'rating':
-                prompt += f"【维度-{label}】\n（对比各研报的投资评级、目标价、评级变化，总结评级异同，列出3条要点）\n\n"
-            elif dim == 'financial':
-                prompt += f"【维度-{label}】\n（对比各研报的营收/净利润/EPS预测、盈利能力、成长性、估值指标，总结财务预测异同，列出3条要点）\n\n"
-            elif dim == 'views':
-                prompt += f"【维度-{label}】\n（对比各研报的核心观点、投资逻辑、风险提示，总结观点异同，列出3条要点）\n\n"
-            elif dim == 'analyst':
-                prompt += f"【维度-{label}】\n（对比不同券商/分析师的视角差异、分歧焦点、推荐力度，总结分析师观点差异，列出3条要点）\n\n"
-        prompt += "每个维度请按如下格式输出：\n【维度-维度名称】\n总结：（一句话总结）\n1. （要点1）\n2. （要点2）\n3. （要点3）\n"
-    
-    return prompt
+    注意：此函数保留用于向后兼容，新代码应直接使用 PromptTemplates.build_compare_prompt
+    """
+    return PromptTemplates.build_compare_prompt(reports, compare_type, dimensions)
 
 
 def _parse_compare_result(text, dimensions=None):
@@ -1203,36 +1908,8 @@ def _parse_compare_result(text, dimensions=None):
 
 
 def _build_query_prompt(question, reports):
-    """构建问答提示词"""
-    prompt = "你是一位专业的证券分析师，请基于以下研报内容回答问题。\n\n"
+    """构建问答提示词 - 使用新的模板类
     
-    prompt += "【参考研报】\n"
-    for i, report in enumerate(reports, 1):
-        prompt += f"\n研报{i}: {report.get('title', '未命名')}\n"
-        prompt += f"公司: {report.get('company', '-')} ({report.get('company_code', '-')})\n"
-        prompt += f"核心观点: {report.get('core_views', '-')}\n"
-        
-        # 添加新的财务指标
-        investment_rating = report.get('investment_rating', {})
-        if investment_rating:
-            prompt += f"投资建议: {investment_rating.get('recommendation', '-')}\n"
-        
-        profitability = report.get('profitability', {})
-        if profitability:
-            prompt += f"盈利能力: 营收{profitability.get('revenue', '-')}亿, 毛利率{profitability.get('gross_margin', '-')}%, ROE{profitability.get('roe', '-')}%\n"
-        
-        growth = report.get('growth', {})
-        if growth:
-            prompt += f"成长性: 营收增速{growth.get('revenue_growth', '-')}%, 利润增速{growth.get('profit_growth', '-')}%\n"
-        
-        valuation = report.get('valuation', {})
-        if valuation:
-            prompt += f"估值: PE-TTM {valuation.get('pe_ttm', '-')}, PB {valuation.get('pb', '-')}\n"
-        
-        if report.get('financial_forecast'):
-            prompt += f"财务预测: {str(report['financial_forecast'])}\n"
-    
-    prompt += f"\n【用户问题】\n{question}\n\n"
-    prompt += "请基于以上研报内容，给出专业、准确的回答。如果研报中没有相关信息，请明确说明。"
-    
-    return prompt
+    注意：此函数保留用于向后兼容，新代码应直接使用 PromptTemplates.build_query_prompt
+    """
+    return PromptTemplates.build_query_prompt(question, reports)

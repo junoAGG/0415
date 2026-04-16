@@ -12,6 +12,45 @@ from typing import Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+class AIError(Exception):
+    """AI服务错误基类"""
+    def __init__(self, code: str, message: str, details: str = None):
+        self.code = code
+        self.message = message
+        self.details = details
+        super().__init__(message)
+
+
+class AIConnectionError(AIError):
+    """AI连接错误"""
+    def __init__(self, message: str = 'AI 服务连接失败', details: str = None):
+        super().__init__('AI_CONNECTION_ERROR', message, details)
+
+
+class AIAuthError(AIError):
+    """AI认证错误"""
+    def __init__(self, message: str = 'AI 认证失败', details: str = None):
+        super().__init__('AI_AUTH_ERROR', message, details)
+
+
+class AIRateLimitError(AIError):
+    """AI请求频率限制错误"""
+    def __init__(self, message: str = 'AI 请求过于频繁', details: str = None):
+        super().__init__('AI_RATE_LIMIT', message, details)
+
+
+class AITimeoutError(AIError):
+    """AI请求超时错误"""
+    def __init__(self, message: str = 'AI 请求超时', details: str = None):
+        super().__init__('AI_TIMEOUT', message, details)
+
+
+class AIServiceError(AIError):
+    """AI服务端错误"""
+    def __init__(self, message: str = 'AI 服务暂时不可用', details: str = None):
+        super().__init__('AI_SERVICE_ERROR', message, details)
+
+
 class AIService:
     """百炼AI服务"""
     
@@ -98,26 +137,32 @@ class AIService:
                 'model': None
             }
     
-    def generate_text(self, prompt: str, max_tokens: int = 2000) -> Dict:
+    def generate_text(self, prompt: str, max_tokens: int = 2000, timeout: int = 30) -> Dict:
         """
         使用百炼API生成文本
         
         Args:
             prompt: 提示词
             max_tokens: 最大token数
+            timeout: 请求超时时间（秒），默认30秒
             
         Returns:
             {
                 'success': bool,
                 'text': str,
-                'error': str
+                'error': str,
+                'error_code': str
             }
         """
+        start_time = time.time()
+        
         if not self.api_key:
+            logger.error("API密钥未配置")
             return {
                 'success': False,
                 'text': '',
-                'error': 'API密钥未配置'
+                'error': 'API密钥未配置',
+                'error_code': 'AI_AUTH_ERROR'
             }
         
         headers = {
@@ -141,14 +186,17 @@ class AIService:
         max_retries = 2
         for attempt in range(max_retries + 1):
             try:
-                logger.info("调用百炼API生成文本，attempt=%d, prompt长度=%d", attempt + 1, len(prompt))
+                logger.info("调用百炼API生成文本，attempt=%d, prompt长度=%d, timeout=%d", 
+                           attempt + 1, len(prompt), timeout)
                 
                 response = requests.post(
                     self.api_url,
                     headers=headers,
                     json=payload,
-                    timeout=30
+                    timeout=timeout
                 )
+                
+                elapsed_time = time.time() - start_time
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -164,29 +212,33 @@ class AIService:
                                 return {
                                     'success': False,
                                     'text': '',
-                                    'error': 'AI 未返回有效内容，请重试'
+                                    'error': 'AI 未返回有效内容，请重试',
+                                    'error_code': 'AI_EMPTY_RESPONSE'
                                 }
                             text = choices[0]['message']['content']
                     
-                    logger.info("文本生成成功，返回长度=%d", len(text))
+                    logger.info("文本生成成功，返回长度=%d, 耗时=%.2fs", len(text), elapsed_time)
                     return {
                         'success': True,
                         'text': text,
-                        'error': ''
+                        'error': '',
+                        'elapsed_time': elapsed_time
                     }
                 elif response.status_code == 429:
                     logger.error("API请求频率限制: %s", response.text)
                     return {
                         'success': False,
                         'text': '',
-                        'error': 'API 请求过于频繁，请稍后重试'
+                        'error': 'API 请求过于频繁，请稍后重试',
+                        'error_code': 'AI_RATE_LIMIT'
                     }
                 elif response.status_code == 401:
                     logger.error("API认证失败: %s", response.text)
                     return {
                         'success': False,
                         'text': '',
-                        'error': 'API 认证失败，请检查 API Key'
+                        'error': 'API 认证失败，请检查 API Key',
+                        'error_code': 'AI_AUTH_ERROR'
                     }
                 elif response.status_code >= 500:
                     logger.error("API服务端错误: %d, %s", response.status_code, response.text)
@@ -197,18 +249,33 @@ class AIService:
                     return {
                         'success': False,
                         'text': '',
-                        'error': 'AI 服务暂时不可用，请稍后重试'
+                        'error': 'AI 服务暂时不可用，请稍后重试',
+                        'error_code': 'AI_SERVICE_ERROR'
                     }
                 else:
                     logger.error("API未知错误: %d, %s", response.status_code, response.text)
                     return {
                         'success': False,
                         'text': '',
-                        'error': f'API错误: {response.status_code}, {response.text}'
+                        'error': f'API错误: {response.status_code}, {response.text}',
+                        'error_code': 'AI_UNKNOWN_ERROR'
                     }
                     
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                logger.error("网络错误: %s, attempt=%d", str(e), attempt + 1)
+            except requests.exceptions.Timeout as e:
+                elapsed_time = time.time() - start_time
+                logger.error("API请求超时: %s, attempt=%d, elapsed=%.2fs", str(e), attempt + 1, elapsed_time)
+                if attempt < max_retries:
+                    logger.info("请求超时，%d秒后重试...", 1)
+                    time.sleep(1)
+                    continue
+                return {
+                    'success': False,
+                    'text': '',
+                    'error': 'AI 请求超时，请稍后重试',
+                    'error_code': 'AI_TIMEOUT'
+                }
+            except requests.exceptions.ConnectionError as e:
+                logger.error("网络连接错误: %s, attempt=%d", str(e), attempt + 1)
                 if attempt < max_retries:
                     logger.info("网络错误，%d秒后重试...", 1)
                     time.sleep(1)
@@ -216,27 +283,45 @@ class AIService:
                 return {
                     'success': False,
                     'text': '',
-                    'error': 'AI 服务暂时不可用，请稍后重试'
+                    'error': 'AI 服务连接失败，请检查网络',
+                    'error_code': 'AI_CONNECTION_ERROR'
                 }
             except Exception as e:
                 logger.error("生成文本异常: %s", str(e))
                 return {
                     'success': False,
                     'text': '',
-                    'error': str(e)
+                    'error': str(e),
+                    'error_code': 'AI_UNKNOWN_ERROR'
                 }
         
         # 不应到达此处，保险返回
+        elapsed_time = time.time() - start_time
         return {
             'success': False,
             'text': '',
-            'error': 'AI 服务暂时不可用，请稍后重试'
+            'error': 'AI 服务暂时不可用，请稍后重试',
+            'error_code': 'AI_SERVICE_ERROR',
+            'elapsed_time': elapsed_time
         }
     
-    def stream_generate_text(self, prompt, max_tokens=2000):
-        """流式生成文本，通过 yield 逐块返回"""
+    def stream_generate_text(self, prompt, max_tokens=2000, timeout: int = 60):
+        """
+        流式生成文本，通过 yield 逐块返回
+        
+        Args:
+            prompt: 提示词
+            max_tokens: 最大token数
+            timeout: 请求超时时间（秒），默认60秒
+            
+        Yields:
+            生成的文本块，错误时以 '[ERROR]' 开头
+        """
+        start_time = time.time()
+        
         if not self.api_key:
-            yield '[ERROR] API密钥未配置'
+            logger.error("API密钥未配置")
+            yield '[ERROR] API密钥未配置|AI_AUTH_ERROR'
             return
         
         headers = {
@@ -260,28 +345,29 @@ class AIService:
         }
         
         try:
-            logger.info("调用百炼API流式生成，prompt长度=%d", len(prompt))
+            logger.info("调用百炼API流式生成，prompt长度=%d, timeout=%d", len(prompt), timeout)
             
             response = requests.post(
                 self.api_url,
                 headers=headers,
                 json=payload,
                 stream=True,
-                timeout=60
+                timeout=timeout
             )
             
             if response.status_code != 200:
                 logger.error("流式API错误: %d", response.status_code)
                 if response.status_code == 429:
-                    yield '[ERROR] API 请求过于频繁，请稍后重试'
+                    yield '[ERROR] API 请求过于频繁，请稍后重试|AI_RATE_LIMIT'
                 elif response.status_code == 401:
-                    yield '[ERROR] API 认证失败，请检查 API Key'
+                    yield '[ERROR] API 认证失败，请检查 API Key|AI_AUTH_ERROR'
                 elif response.status_code >= 500:
-                    yield '[ERROR] AI 服务暂时不可用，请稍后重试'
+                    yield '[ERROR] AI 服务暂时不可用，请稍后重试|AI_SERVICE_ERROR'
                 else:
-                    yield f'[ERROR] API错误: {response.status_code}'
+                    yield f'[ERROR] API错误: {response.status_code}|AI_UNKNOWN_ERROR'
                 return
             
+            chunk_count = 0
             for line in response.iter_lines():
                 if not line:
                     continue
@@ -310,19 +396,22 @@ class AIService:
                             text = choices[0].get('message', {}).get('content', '')
                 
                 if text:
+                    chunk_count += 1
                     yield text
             
-            logger.info("流式生成完成")
+            elapsed_time = time.time() - start_time
+            logger.info("流式生成完成，共%d块，耗时=%.2fs", chunk_count, elapsed_time)
             
         except requests.exceptions.Timeout:
-            logger.error("流式API超时")
-            yield '[ERROR] 请求超时，请稍后重试'
+            elapsed_time = time.time() - start_time
+            logger.error("流式API超时，耗时=%.2fs", elapsed_time)
+            yield '[ERROR] 请求超时，请稍后重试|AI_TIMEOUT'
         except requests.exceptions.ConnectionError:
             logger.error("流式API连接错误")
-            yield '[ERROR] 网络连接失败，请稍后重试'
+            yield '[ERROR] 网络连接失败，请稍后重试|AI_CONNECTION_ERROR'
         except Exception as e:
             logger.error("流式生成异常: %s", str(e))
-            yield f'[ERROR] 生成失败: {str(e)}'
+            yield f'[ERROR] 生成失败: {str(e)}|AI_UNKNOWN_ERROR'
 
 
 # 全局AI服务实例

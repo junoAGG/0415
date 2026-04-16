@@ -1,4 +1,4 @@
-import type { AIQueryRequest, AIQueryResponse, CompareResponse, ChatSession, ChatMessage, AIStreamRequest, SSEChunk } from '../types/analysis';
+import type { AIQueryRequest, AIQueryResponse, CompareResponse, ChatSession, ChatMessage, AIStreamRequest, SSEChunk, ExportRequest, ExportFormat, SessionQueryParams, PaginatedSessions } from '../types/analysis';
 
 const API_BASE = '/api/v1/agent';
 
@@ -166,8 +166,9 @@ export const aiService = {
 
   // 获取会话列表
   getSessions: async (): Promise<ChatSession[]> => {
-    const data = await request<{ sessions: ChatSession[] }>('/sessions');
-    return data.sessions;
+    const data = await request<{ items: ChatSession[]; sessions?: ChatSession[] }>('/sessions');
+    // 后端返回的是 { items: [...] } 格式，但也兼容 { sessions: [...] } 格式
+    return data.items || data.sessions || [];
   },
 
   // 创建新会话
@@ -197,12 +198,56 @@ export const aiService = {
   },
 
   // 重命名会话
-  updateSession: async (sessionId: string, title: string): Promise<any> => {
-    return request('/sessions/' + sessionId, {
+  updateSession: async (sessionId: string, title: string): Promise<void> => {
+    await request<void>('/sessions/' + sessionId, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
     });
+  },
+
+  // ========== 导出功能 ==========
+
+  // 导出对比结果
+  exportCompareResult: async (params: ExportRequest): Promise<Blob> => {
+    const response = await fetch(`${API_BASE}/analysis/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || '导出失败');
+    }
+    return response.blob();
+  },
+
+  // 导出会话
+  exportSession: async (sessionId: string, format: ExportFormat, includeSources = true): Promise<Blob> => {
+    const response = await fetch(`${API_BASE}/sessions/${sessionId}/export?format=${format}&include_sources=${includeSources}`, {
+      method: 'GET',
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || '导出失败');
+    }
+    return response.blob();
+  },
+
+  // ========== 会话搜索 ==========
+
+  // 搜索会话
+  searchSessions: async (params: SessionQueryParams): Promise<PaginatedSessions> => {
+    const queryParams = new URLSearchParams();
+    if (params.search) queryParams.append('search', params.search);
+    if (params.tags && params.tags.length > 0) {
+      params.tags.forEach(tag => queryParams.append('tags', tag));
+    }
+    if (params.page) queryParams.append('page', params.page.toString());
+    if (params.page_size) queryParams.append('page_size', params.page_size.toString());
+
+    const data = await request<PaginatedSessions>(`/sessions/search?${queryParams.toString()}`);
+    return data;
   },
 };
 
